@@ -193,17 +193,17 @@
     if (this.prevBX != null) { const dsx = (bp[0] - bp[1]) - this.prevBX; if (dsx < -0.3) this.faceL = true; else if (dsx > 0.3) this.faceL = false; }
     this.prevBX = bp[0] - bp[1];
     const be = this.hAt(bp[1]);
-    this.shadow(bp[0], bp[1], be, 6, bp[2]);
+    this.shadow(bp[0], bp[1], be, 9, bp[2]);
     list.push({ d: bp[0] + bp[1], f: () => this.wizard(bp, b, s, now, be) });
     // 적
     for (const en of s.e) {
       const p = this.sm('e' + en[0], en[2], en[3], en[4], k);
       const e = this.hAt(p[1]);
-      this.shadow(p[0], p[1], e, en[1] === 'queen' ? 16 : 5, p[2]);
+      this.shadow(p[0], p[1], e, en[1] === 'queen' ? 24 : 8, p[2]);
       list.push({ d: p[0] + p[1] + (en[1] === 'fly' ? 40 : 0), f: () => this.enemy(en[1], p, en, now, e) });
     }
     list.sort((a, c) => a.d - c.d).forEach(o => o.f());
-    this.lights.push({ x: this.P(bp[0], bp[1], be + bp[2] + 18)[0] + (this.faceL ? -7 : 7), y: this.P(bp[0], bp[1], be + bp[2] + 18)[1], r: 105, c: 'rgba(110,150,255,0.10)' });
+    this.lights.push({ x: this.P(bp[0], bp[1], be + bp[2] + 40)[0] + (this.faceL ? -9 : 9), y: this.P(bp[0], bp[1], be + bp[2] + 40)[1], r: 115, c: 'rgba(110,150,255,0.10)' });
 
     // 정령
     const sp = s.sp;
@@ -295,16 +295,6 @@
   P.pressEyes = function (s, bp, be, now) {
     const x = this.x, q = this.P(bp[0], bp[1], be + bp[2]), X = q[0], Y = q[1];
     const col = r => { const pl = s.players.find(p => p.id === s.roles[r]); return PCOL[pl ? pl.col || 0 : 0]; };
-    const spots = { fb: [4, -1], lr: [-4, -1], jump: [6, -7], crouch: [-6, -8], lh: [-12, -12], rh: [11, -13] };
-    for (const r in spots) {
-      const age = s.act[r]; if (!(age < 0.35)) continue;
-      const [dx, dy] = spots[r], ex = X + dx, ey = Y + dy - (s.b[3] ? -4 : 0);
-      x.globalAlpha = 1 - age / 0.35;
-      x.fillStyle = col(r); x.fillRect(ex - 4, ey - 3, 8, 6);
-      x.fillStyle = '#ffffff'; x.fillRect(ex - 3, ey - 2, 6, 4);
-      x.fillStyle = '#1a1426'; x.fillRect(ex - 1, ey - 1, 2, 2);
-      x.globalAlpha = 1;
-    }
     // 정령에는 조종하는 사람 색 점
     const sp = s.sp, a = this.disp.get('spa') || [sp[0], sp[1]], d = this.disp.get('spd') || [sp[2], sp[3]];
     const qa = this.P(a[0], a[1], this.hAt(a[1]) + 18), qd = this.P(d[0], d[1], this.hAt(d[1]) + 8);
@@ -313,7 +303,7 @@
   };
   P.drawBubbles = function (bp, be, dt) {
     const x = this.x; this.bubbles = this.bubbles.filter(b => (b.t -= dt) > 0);
-    const q = this.P(bp[0], bp[1], be + bp[2] + 30);
+    const q = this.P(bp[0], bp[1], be + bp[2] + 56);
     x.font = '11px "Galmuri11", "Galmuri9", monospace'; x.textAlign = 'center';
     this.bubbles.forEach((b, i) => {
       const w = x.measureText(b.text).width + 10, yy = q[1] - i * 16 - 6;
@@ -541,29 +531,22 @@
   };
 
   // ---------- 캐릭터 ----------
+  // 마법사: 부위별 그림(wizard.js). 누른 부위는 그 사람 색으로 빛난다
   P.wizard = function (p, b, s, now, e) {
     const x = this.x;
-    const inv = b[5], crouch = b[3], slide = b[4], faceL = this.faceL;
+    const inv = b[5], crouch = b[3], slide = b[4];
     if (inv && Math.floor(now * 14) % 2 && s.st === 'play') return;
-    const moving = Math.abs(b[7]) > 5;
+    const moving = Math.abs(b[7]) > 5 || Math.abs(this.lastBY - p[1]) > 0.3;
+    this.lastBY = p[1];
     const q = this.P(p[0], p[1], e + p[2]);
-    const bob = moving && p[2] <= 0 && !crouch ? (Math.floor(now * 8) % 2) : 0;
-    const X = q[0], Y = q[1] - bob;
-    const h = crouch ? 14 : 20;
-    x.save();
-    if (faceL) { x.translate(X, 0); x.scale(-1, 1); x.translate(-X, 0); }
-    if (!slide) {
-      x.fillStyle = '#1a1426'; x.fillRect(X + 6, Y - h + 3, 3, h - 3);
-      x.fillStyle = '#a9aec0'; x.fillRect(X + 7, Y - h + 4, 1, h - 5);
-      x.fillStyle = '#1a1426'; x.fillRect(X + 4, Y - h - 3, 7, 7);
-      x.fillStyle = '#e04a4a'; x.fillRect(X + 5, Y - h - 2, 5, 5);
-      x.fillStyle = '#ffffff'; x.fillRect(X + 6, Y - h - 1, 1, 1); x.fillRect(X + 7, Y - h, 2, 1); x.fillRect(X + 8, Y - h + 1, 1, 1);
-    }
-    x.drawImage(this.spr.wiz, X - 7, Y - h, 14, h);
-    x.drawImage(this.spr.shield, X - 10, Y - h + 9);
-    if (slide) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillRect(X - 12, Y - 3, 4, 1); x.fillRect(X - 14, Y - 6, 4, 1); }
-    x.restore();
-    if (s.sab[0] === 'on') { x.fillStyle = '#c77dff'; x.fillRect(X - 1, Y - h - 6 - (Math.floor(now * 6) % 2), 2, 2); }
+    const col = r => { const pl = s.players.find(pp => pp.id === s.roles[r]); return PCOL[pl ? pl.col || 0 : 0]; };
+    const hl = {};
+    for (const r of ['fb', 'lr', 'jump', 'crouch', 'lh', 'rh']) if (s.act[r] < 0.3) hl[r] = col(r);
+    const lhA = s.act.lh < 0.2 ? 1 - s.act.lh / 0.2 : 0, rhA = s.act.rh < 0.25 ? 1 - s.act.rh / 0.25 : 0;
+    const an = G.TUS_DRAW_WIZ(x, q[0], q[1], 1, { faceL: this.faceL, walk: moving && p[2] <= 0 ? (now * 2.2) % 1 : null, crouch, slide, air: p[2] > 1, lh: lhA, rh: rhA, hl });
+    if (rhA > 0) this.lights.push({ x: an.rh[0], y: an.rh[1], r: 34, c: 'rgba(120,200,255,0.3)' });
+    if (slide) { x.fillStyle = 'rgba(255,255,255,0.6)'; const d = this.faceL ? 1 : -1; x.fillRect(q[0] + d * 14, q[1] - 4, 5, 1); x.fillRect(q[0] + d * 17, q[1] - 8, 5, 1); }
+    if (s.sab[0] === 'on') { x.fillStyle = '#c77dff'; x.fillRect(an.top[0] - 1, an.top[1] - 6 - (Math.floor(now * 6) % 2), 3, 3); }
   };
 
   P.enemy = function (kind, p, en, now, e) {
@@ -587,18 +570,19 @@
       return;
     }
     if (kind === 'ant') {
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 5, Y - 7 + (Math.floor(now * 10 + en[0]) % 2));
+      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 10, Y - 14 + (Math.floor(now * 10 + en[0]) % 2), 20, 14);
     } else if (kind === 'fly') {
       const flap = Math.floor(now * 16 + en[0]) % 2;
       x.fillStyle = 'rgba(217,236,255,0.8)';
-      x.fillRect(X - 9, Y - 10 - flap * 2, 6, 3); x.fillRect(X + 3, Y - 10 - flap * 2, 6, 3);
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 5, Y - 7);
+      x.fillRect(X - 17, Y - 18 - flap * 3, 11, 4); x.fillRect(X + 6, Y - 18 - flap * 3, 11, 4);
+      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 10, Y - 14, 20, 14);
     } else if (kind === 'egg') {
       const t = en[6], pulse = t < 2 ? (Math.floor(now * 8) % 2) : 0;
       x.fillStyle = '#1a1426'; x.beginPath(); x.ellipse(X, Y - 5, 6 + pulse, 7 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = hit ? '#ffffff' : '#efe3c8'; x.beginPath(); x.ellipse(X, Y - 5, 5 + pulse, 6 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = '#c9a97a'; x.fillRect(X - 2, Y - 8, 1, 4); x.fillRect(X + 1, Y - 6, 1, 3);
     } else if (kind === 'queen') {
+      x.save(); x.translate(X, Y); x.scale(1.6, 1.6); x.translate(-X, -Y);
       const act = en[6];
       const tele = act === 'tele' && Math.floor(now * 12) % 2;
       const o = '#1a1426', body = hit ? '#ffffff' : '#7a2418', light = hit ? '#ffe0e0' : '#a8392a';
@@ -613,6 +597,7 @@
       x.fillStyle = '#f2c94c'; x.fillRect(X - 5, Y - 33, 10, 3); x.fillRect(X - 5, Y - 35, 2, 2); x.fillRect(X - 1, Y - 36, 2, 3); x.fillRect(X + 3, Y - 35, 2, 2);
       x.fillStyle = o; for (let i = -1; i <= 1; i++) { x.fillRect(X - 16, Y - 14 + i * 5, 6, 1); x.fillRect(X + 10, Y - 14 + i * 5, 6, 1); }
       if (tele) { x.strokeStyle = '#ff4d4d'; x.lineWidth = 1; x.strokeRect(X - 18, Y - 38, 36, 38); }
+      x.restore();
     }
   };
 

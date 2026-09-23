@@ -425,36 +425,38 @@
   // ---------------- 몸 지도: 마법사 부위마다 담당자 ----------------
   // 왼쪽 열/오른쪽 열 상자에서 몸의 해당 부위로 선을 긋는다
   const BODY = {
-    atk: { side: 0, row: 0, at: [150, 50] }, lh: { side: 0, row: 1, at: [150, 140] }, crouch: { side: 0, row: 2, at: [197, 170] }, lr: { side: 0, row: 3, at: [197, 190] },
-    def: { side: 1, row: 0, at: [296, 104] }, rh: { side: 1, row: 1, at: [252, 146] }, jump: { side: 1, row: 2, at: [243, 176] }, fb: { side: 1, row: 3, at: [243, 192] },
+    atk: { side: 0, row: 0 }, lh: { side: 0, row: 1 }, crouch: { side: 0, row: 2 }, lr: { side: 0, row: 3 },
+    def: { side: 1, row: 0 }, rh: { side: 1, row: 1 }, jump: { side: 1, row: 2 }, fb: { side: 1, row: 3 },
   };
   let lastRollTick = 0;
+  const G_DRAW = (...a) => window.TUS_DRAW_WIZ(...a);
   function drawBodyMap(cv, s) {
     const x = cv.getContext('2d'), W = cv.width, H = cv.height;
     x.imageSmoothingEnabled = false; x.clearRect(0, 0, W, H);
     x.fillStyle = '#0f0c1a'; x.fillRect(0, 0, W, H);
     const g = x.createRadialGradient(W / 2, 120, 10, W / 2, 120, 160); g.addColorStop(0, 'rgba(110,90,200,0.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, W, H);
-    // 마법사 (6배) + 방패 + 지팡이 + 정령 둘
-    const sc = 6, ox = W / 2 - 7 * sc, oy = 72;
-    x.drawImage(rend.spr.wiz, ox, oy, 14 * sc, 20 * sc);
-    x.drawImage(rend.spr.shield, ox - 30, oy + 54, 30, 36);
-    x.fillStyle = '#a9aec0'; x.fillRect(ox + 14 * sc + 4, oy - 6, 5, 20 * sc + 6);
-    x.fillStyle = '#e04a4a'; x.fillRect(ox + 14 * sc - 4, oy - 26, 22, 22); x.fillStyle = '#fff'; x.fillRect(ox + 14 * sc + 2, oy - 20, 6, 6);
-    x.fillStyle = '#ff7b2e'; x.fillRect(142, 42, 16, 16); x.fillStyle = '#ffe27a'; x.fillRect(146, 48, 8, 7); x.fillStyle = '#1a1426'; x.fillRect(146, 49, 2, 2); x.fillRect(152, 49, 2, 2);
-    x.fillStyle = 'rgba(122,90,58,0.9)'; x.beginPath(); x.arc(296, 104, 14, 0, Math.PI * 2); x.fill(); x.strokeStyle = '#5fbf5a'; x.lineWidth = 2; x.stroke();
-    x.fillStyle = '#f4f0e0'; x.fillRect(290, 100, 4, 4); x.fillRect(298, 100, 4, 4);
     const rolling = s.st === 'intro' && (s.stTot || 15) - s.stT < 1.6 && s.players.length > 1;
+    const owner = {};
+    for (const r of ROLES) owner[r] = rolling ? s.players[Math.floor(Math.random() * s.players.length)].id : s.roles[r];
+    const pcol = id => { const pl = s.players.find(p => p.id === id); return PCOL[pl ? pl.col || 0 : 0]; };
+    // 마법사 (4배, 부위마다 담당자 색으로 살짝 칠함) + 정령 둘
+    const hl = {}; for (const r of ['fb', 'lr', 'jump', 'crouch', 'lh', 'rh']) hl[r] = pcol(owner[r]);
+    const an = G_DRAW(x, W / 2, H - 14, 4, { hl, hlA: 0.42 });
+    an.atk = [W / 2 - 96, 40]; an.def = [W / 2 + 98, 96];
+    x.fillStyle = '#1a1426'; x.fillRect(an.atk[0] - 9, an.atk[1] - 9, 18, 18); x.fillStyle = '#ff7b2e'; x.fillRect(an.atk[0] - 8, an.atk[1] - 8, 16, 16); x.fillStyle = '#ffe27a'; x.fillRect(an.atk[0] - 4, an.atk[1] - 2, 8, 7); x.fillStyle = '#1a1426'; x.fillRect(an.atk[0] - 4, an.atk[1] - 1, 2, 2); x.fillRect(an.atk[0] + 2, an.atk[1] - 1, 2, 2);
+    x.fillStyle = 'rgba(122,90,58,0.9)'; x.beginPath(); x.arc(an.def[0], an.def[1], 14, 0, Math.PI * 2); x.fill(); x.strokeStyle = '#5fbf5a'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = '#f4f0e0'; x.fillRect(an.def[0] - 6, an.def[1] - 4, 4, 4); x.fillRect(an.def[0] + 2, an.def[1] - 4, 4, 4);
     if (rolling && performance.now() - lastRollTick > 80) { lastRollTick = performance.now(); beep(900 + Math.random() * 300, 900, 0.03, 'square', 0.02); }
     for (const r of ROLES) {
       const b = BODY[r], bw = 132, bh = 44, bx = b.side ? W - bw - 4 : 4, by = 8 + b.row * 60;
-      const pid = rolling ? s.players[Math.floor(Math.random() * s.players.length)].id : s.roles[r];
+      const pid = owner[r];
       const pl = s.players.find(p => p.id === pid) || { name: '?', col: 0 };
       const col = PCOL[pl.col || 0], me = pid === myId && !rolling;
       const changed = s.st === 'shuffle' && s.prev && s.prev[r] !== s.roles[r];
       // 선: 상자 안쪽 가장자리 → 몸 부위
       const lx = b.side ? bx : bx + bw, ly = by + bh / 2;
-      x.strokeStyle = col; x.globalAlpha = 0.8; x.lineWidth = me ? 2 : 1; x.beginPath(); x.moveTo(lx, ly); x.lineTo(b.at[0], b.at[1]); x.stroke(); x.globalAlpha = 1;
-      x.fillStyle = col; x.fillRect(b.at[0] - 3, b.at[1] - 3, 6, 6);
+      x.strokeStyle = col; x.globalAlpha = 0.8; x.lineWidth = me ? 2 : 1; x.beginPath(); x.moveTo(lx, ly); x.lineTo(an[r][0], an[r][1]); x.stroke(); x.globalAlpha = 1;
+      x.fillStyle = '#1a1426'; x.fillRect(an[r][0] - 4, an[r][1] - 4, 8, 8); x.fillStyle = col; x.fillRect(an[r][0] - 3, an[r][1] - 3, 6, 6);
       x.fillStyle = me ? '#34305a' : '#1d1830'; x.fillRect(bx, by, bw, bh);
       x.strokeStyle = me ? '#ffffff' : col; x.lineWidth = me ? 3 : 2; x.strokeRect(bx + 1, by + 1, bw - 2, bh - 2); // 내 부위 = 흰 테두리 (노란 플레이어와 안 헷갈리게)
       x.textAlign = 'left'; x.font = '11px "Galmuri11", monospace'; x.fillStyle = '#a39bc4';
