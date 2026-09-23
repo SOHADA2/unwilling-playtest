@@ -98,6 +98,12 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 .pinghelp{width:100%;text-align:center;font-size:11px;color:var(--dim);margin-top:2px}
 .pinghelp kbd{font-size:10px}
 .pc{border-left-width:5px}
+#h-floor{left:50%;top:6px;transform:translateX(-50%);font-size:11px;color:#cdb8ff;background:rgba(13,11,22,.6);padding:2px 10px;border:1px solid #3a3350;letter-spacing:.08em}
+.pc.win{box-shadow:0 0 0 2px var(--gold),0 0 14px rgba(246,201,69,.6)}
+.pc .sv{color:var(--gold);font-size:10px;margin-left:6px}
+table.res td.good{color:var(--gold)}
+table.res td.bad{color:var(--red)}
+.causes{font-size:11px;color:var(--dim);margin-top:2px}
 #h-banner{left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;font-family:"Galmuri14",monospace;font-size:22px;color:var(--gold);text-shadow:2px 2px 0 #08070e}
 #h-banner small{display:block;font-family:"Galmuri11",monospace;font-size:12px;color:var(--ink);margin-top:4px}
 
@@ -160,7 +166,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 
 <section class="screen" id="title">
   <div class="box">
-    <img class="logo" src="assets/logo.png?v=mudr6wki" alt="The Unwilling Summoned">
+    <img class="logo" src="assets/logo.png?v=mudrnyvv" alt="The Unwilling Summoned">
     <h1 class="title-kr">소환되고 싶지 않아 (니들이랑)</h1>
     <p class="sub">프로토타입 · 마탑 B3 소환실 · 2~4인 협동</p>
     <label class="f" for="nm">내 이름</label>
@@ -180,7 +186,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
       이동: <kbd>W</kbd><kbd>S</kbd> 앞뒤 · <kbd>A</kbd><kbd>D</kbd> 좌우 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프 · <kbd>C</kbd> 앉기<br>
       공격: <kbd>좌클릭</kbd> 왼손 망치 · <kbd>우클릭</kbd> 오른손 마법 · <kbd>마우스</kbd> 정령<br>
       <span id="t-mode"></span><br>
-      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:00</span>
+      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:13</span>
     </p>
   </div>
 </section>
@@ -215,6 +221,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     <div class="hud" id="h-hint" hidden></div>
     <div class="hud" id="h-sab" hidden><canvas id="face" width="42" height="36"></canvas><div><div class="l1" id="sab-l1"></div><div class="l2" id="sab-l2"></div></div></div>
     <div class="hud" id="h-banner" hidden></div>
+    <div class="hud" id="h-floor">마탑 B3 · 소환실</div>
     <div class="hud" id="h-tut" hidden></div>
     <div class="hud" id="h-sub"></div>
     <div class="hud" id="h-skip">Enter 또는 클릭: 넘기기</div>
@@ -227,13 +234,13 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 <button id="mute" type="button">소리 켜짐 (M)</button>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/level.js?v=mudr6wki"></script>
-<script src="src/game.js?v=mudr6wki"></script>
-<script src="src/bot.js?v=mudr6wki"></script>
-<script src="src/wizard.js?v=mudr6wki"></script>
-<script src="src/render.js?v=mudr6wki"></script>
-<script src="src/prologue.js?v=mudr6wki"></script>
-<script src="src/net.js?v=mudr6wki"></script>
-<script src="src/main.js?v=mudr6wki"></script>
+<script src="src/level.js?v=mudrnyvv"></script>
+<script src="src/game.js?v=mudrnyvv"></script>
+<script src="src/bot.js?v=mudrnyvv"></script>
+<script src="src/wizard.js?v=mudrnyvv"></script>
+<script src="src/render.js?v=mudrnyvv"></script>
+<script src="src/prologue.js?v=mudrnyvv"></script>
+<script src="src/net.js?v=mudrnyvv"></script>
+<script src="src/main.js?v=mudrnyvv"></script>
 </body>
 </html>

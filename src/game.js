@@ -117,8 +117,8 @@
     this.events = []; this.seq = 0;
     this.hintsDone = {};
     this.pstats = {};
-    this.players.forEach(p => this.pstats[p.id] = { kills: 0, breaks: 0, blocks: 0, combos: 0, blame: 0 });
-    this.blameWizard = 0;
+    this.players.forEach(p => this.pstats[p.id] = { kills: 0, breaks: 0, blocks: 0, combos: 0, blame: 0, solves: 0, causes: {} });
+    this.blameWizard = 0; this.underBeam = null; this.underHit = false; this.overPit = false;
     this.lastAct = {};
     this.result = null; this.shuffled = false; this.nomanaT = 0; this.swing = null;
     // 몸 적응 훈련: 켜져 있으면 출발 지점에 연습 표적을 놓고, 다 끝낼 때까지 계단이 안 무너지고 다치지 않는다
@@ -233,7 +233,7 @@
     this.hp -= a; b.inv = 0.8;
     let who;
     if (this.sab.phase === 'on') { this.blameWizard++; who = 'wizard'; }
-    else { who = this.roles[role]; if (this.pstats[who]) this.pstats[who].blame++; }
+    else { who = this.roles[role]; const ps = this.pstats[who]; if (ps) { ps.blame++; ps.causes[cause] = (ps.causes[cause] || 0) + 1; } }
     this.emit('hurt', { a, role, cause, who, x: r1(b.x), y: r1(b.y) });
     return true;
   };
@@ -364,8 +364,19 @@
     if (sp > 5) { b.faceX = b.vx / sp; b.faceY = b.vy / sp; }
     this.moveBody(b.vx * dt, b.vy * dt, sp);
 
+    // 들보 밑 통과: 숙인 채로 들보 아래에 들어갔다가, 부딪히지 않고 위쪽으로 빠져나가면 성공
+    const bm = this.level.obs.find(o => o.alive && o.k === 'beam' && b.x + 5 > o.x0 && b.x - 5 < o.x1 && b.y + 4 > o.y0 && b.y - 4 < o.y1);
+    if (bm) { if (b.crouch && this.underBeam !== bm.id) { this.underBeam = bm.id; this.underHit = false; } }
+    else if (this.underBeam != null) {
+      const o = this.level.obs.find(q => q.id === this.underBeam);
+      if (o && !this.underHit && b.y < o.y0) this.solve('beam', ['crouch']);
+      this.underBeam = null;
+    }
+    // 구덩이 건너기: 공중에서 낭떠러지 위를 지나 바닥에 내려앉으면 성공
+    if (b.z > 0 && this.tileAtPx(b.x, b.y) === ' ') this.overPit = true;
     // 구덩이
     const onGround = b.z <= 0 && b.vz <= 0;
+    if (onGround && this.overPit) { this.overPit = false; if (this.tileAtPx(b.x, b.y) !== ' ' && !this.collapsedAt(b.y)) this.solve('pit', ['jump']); }
     if (onGround && (this.tileAtPx(b.x, b.y) === ' ' || this.collapsedAt(b.y))) this.fall();
     else if (onGround) {
       b.safeT -= dt;
@@ -382,7 +393,7 @@
   };
   P.bump = function (h, sx, sy, sp) {
     if (h.k === 'bar' && sp > 45) { if (this.hurt(5, 'lh', 'bar')) this.knock(-sx, -sy || 1, 120); }
-    else if (h.k === 'beam') { if (this.hurt(7, 'crouch', 'beam')) this.knock(-sx, -sy || 1, 130); }
+    else if (h.k === 'beam') { this.underHit = true; if (this.hurt(7, 'crouch', 'beam')) this.knock(-sx, -sy || 1, 130); }
   };
   P.fall = function () {
     const b = this.body;
@@ -421,6 +432,13 @@
     return best || [this.level.start.x, this.level.start.y];
   };
 
+  // 담당자가 자기 장애물을 해결했다 → 이름·색으로 "성공!" (결과 화면 '해결' 횟수)
+  P.solve = function (k, roles) {
+    if (this.state !== 'play') return;
+    const ids = [...new Set(roles.map(r => this.roles[r]))];
+    ids.forEach(id => { if (this.pstats[id]) this.pstats[id].solves++; });
+    this.emit('solve', { k, role: roles[0], pids: ids, x: r1(this.body.x), y: r1(this.body.y) });
+  };
   P.combo = function (kind, roles) {
     const ids = [...new Set(roles.map(r => this.roles[r]))];
     ids.forEach(id => { if (this.pstats[id]) this.pstats[id].combos++; });
@@ -469,9 +487,12 @@
       const hitBar = this.level.obs.some(q => q.alive && q.k === 'bar' && o.y + 6 > q.y0 && o.y - 6 < q.y1 && (o.k === 'log' || (o.x > q.x0 && o.x < q.x1)));
       if (hitBar || this.solidAt(Math.floor(o.x / T), Math.floor((o.y + 6) / T))) { o.dead = true; this.emit('break', { x: r1(o.x), y: r1(o.y), roll: 1 }); continue; }
       if (b.z < 9) {
-        if (o.k === 'log' && b.x > o.x0 - 4 && b.x < o.x1 + 4 && Math.abs(b.y - o.y) < 8) { if (this.hurt(8, 'lh', 'log')) this.knock(0, 1, 150); }
-        if (o.k === 'barrel' && Math.hypot(b.x - o.x, b.y - o.y) < 11) { const d = Math.hypot(b.x - o.x, b.y - o.y) || 1; if (this.hurt(6, 'lr', 'barrel')) this.knock((b.x - o.x) / d, 0.8, 140); }
+        if (o.k === 'log' && b.x > o.x0 - 4 && b.x < o.x1 + 4 && Math.abs(b.y - o.y) < 8) { o.hit = true; if (this.hurt(8, 'lh', 'log')) this.knock(0, 1, 150); }
+        if (o.k === 'barrel' && Math.hypot(b.x - o.x, b.y - o.y) < 11) { o.hit = true; const d = Math.hypot(b.x - o.x, b.y - o.y) || 1; if (this.hurt(6, 'lr', 'barrel')) this.knock((b.x - o.x) / d, 0.8, 140); }
       }
+      // 점프로 통나무 넘기 / 옆으로 상자 피하기
+      if (o.k === 'log' && !o.hit && !o.done && b.z >= 9 && b.x > o.x0 - 4 && b.x < o.x1 + 4 && Math.abs(b.y - o.y) < 6) { o.done = true; this.solve('logjump', ['jump']); }
+      if (o.k === 'barrel' && !o.hit && !o.done && o.y > b.y + 2 && o.y < b.y + 8 && Math.abs(b.x - o.x) < 28) { o.done = true; this.solve('dodge', ['lr']); }
     }
     this.rollers = this.rollers.filter(o => !o.dead);
   };
@@ -586,6 +607,7 @@
             o.alive = false; this.xp += 1;
             const pid = this.roles.lh; if (this.pstats[pid]) this.pstats[pid].breaks++;
             this.emit('break', { id: o.id, x: r1(cx), y: r1(cy) });
+            this.solve('bar', ['lh']);
           }
         }
         for (const o of this.rollers) {
@@ -596,6 +618,7 @@
             o.dead = true; this.xp += 1;
             const pid = this.roles.lh; if (this.pstats[pid]) this.pstats[pid].breaks++;
             this.emit('break', { x: r1(o.x), y: r1(o.y) });
+            this.solve(o.k === 'log' ? 'log' : 'crate', ['lh']);
           }
         }
         this.rollers = this.rollers.filter(o => !o.dead);
@@ -658,6 +681,7 @@
       if (this.pstats[pid]) { if (e.k === 'egg' || e.k === 'crate') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
       if (e.tr) this.tutDone(e.k === 'crate' ? 'lh' : e.k === 'ant' ? 'rh' : 'atk');
       this.emit('kill', { k: e.k, x: r1(e.x), y: r1(e.y - e.z) });
+      if (e.k === 'ant' || e.k === 'fly' || e.k === 'egg' || e.k === 'crate') this.solve(e.k === 'fly' ? 'fly' : e.k === 'ant' ? 'ant' : 'crate', [role]);
       if (e.k === 'queen') this.finish('clear');
     }
   };
@@ -692,6 +716,7 @@
         s.dead = true;
         const pid = this.roles.def; if (this.pstats[pid]) this.pstats[pid].blocks++;
         this.emit('block', { x: r1(s.x), y: r1(s.y) });
+        this.solve('block', ['def']);
         if (this.inp('def').mx != null) this.tutDone('def'); // 마우스로 직접 옮겨 막았을 때만 인정
         continue;
       }

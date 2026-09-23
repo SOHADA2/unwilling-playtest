@@ -262,6 +262,7 @@
     barrel: ['lr', '나무 상자가 미끄러져 온다! 좌우로 피해요'],
   };
   let lastSeq = 0, hintQ = [], hintT = 0, bannerT = 0;
+  const solvedAt = {};
   function toast(text, cls) {
     const d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls;
     const f = $('h-feed'); f.prepend(d);
@@ -293,6 +294,12 @@
         case 'nomana': if (s.roles.rh === myId) toast('마나 부족!'); break;
         case 'sabwarn': break;
         case 'left': toast('한 명이 나갔어요. 역할을 다시 나눴어요.', 'wiz'); break;
+        case 'solve': {
+          const big = !['ant', 'fly', 'block', 'crate'].includes(ev.k);
+          if (big) { beep(784, 784, 0.08, 'square', 0.05); setTimeout(() => beep(1175, 1175, 0.14, 'triangle', 0.06), 70); }
+          for (const id of ev.pids) solvedAt[id] = performance.now();
+          break;
+        }
         case 'sabswap': toast(`영혼 뒤바뀜! ${nameOf(ev.a)} ↔ ${nameOf(ev.b)} 역할이 잠깐 바뀜`, 'wiz'); break;
         case 'ping': beep(ev.k === 2 ? 300 : 700, ev.k === 2 ? 200 : 900, 0.08, 'square', 0.04); break;
         case 'tutstep': { const q = TUT.find(q => q.id === ev.id); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
@@ -379,12 +386,19 @@
     setIf('team', key, () => {
       $('team').innerHTML = s.players.map(p => {
         const rs = ROLES.filter(r => s.roles[r] === p.id);
-        return `<div class="pc${p.id === myId ? ' me' : ''}" style="border-left-color:${PCOL[p.col || 0]}"><div class="nm">${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${rs.length}개 부위</span></div><div class="chips">` +
+        return `<div class="pc${p.id === myId ? ' me' : ''}" data-id="${esc(p.id)}" style="border-left-color:${PCOL[p.col || 0]}"><div class="nm">${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${rs.length}개 부위</span></div><div class="chips">` +
           rs.map(r => `<span class="chip" data-r="${r}"><i class="eye"></i>${ROLE_INFO[r].part}<kbd>${ROLE_INFO[r].keys}</kbd></span>`).join('') + '</div></div>';
       }).join('') + '<div class="pinghelp">신호: <kbd>1</kbd> 지금! <kbd>2</kbd> 멈춰! <kbd>3</kbd> 니 탓! <kbd>4</kbd> 나이스!</div>';
       fit();
     });
     for (const el of $('team').querySelectorAll('.chip')) { const on = s.act[el.dataset.r] < 0.18; if (el.classList.contains('on') !== on) el.classList.toggle('on', on); }
+    // 방금 뭔가 해결한 사람 카드는 금색으로 반짝 + 해결 횟수
+    const nowMs = performance.now();
+    for (const el of $('team').querySelectorAll('.pc')) {
+      const id = el.dataset.id, win = nowMs - (solvedAt[id] || -9999) < 700;
+      if (el.classList.contains('win') !== win) el.classList.toggle('win', win);
+    }
+    $('h-floor').hidden = !!s.boss || s.st !== 'play';
     tutHud(s);
     modal(s);
   }
@@ -419,8 +433,8 @@
       html = (r.kind === 'clear'
         ? `<p class="mt" style="color:var(--gold)">B3 클리어!</p><p class="ms">절대마법 재료 획득: 개미가 훔쳐 간 마법가루 · ${r.time}초 · LV${r.lv}<br>다음 층 B2 지하 창고는 준비 중이에요</p>`
         : `<p class="mt" style="color:var(--red)">게임 오버</p><p class="ms">몸이 하나라 체력 0이면 끝. ${r.time}초 버팀 · LV${r.lv}</p>`) +
-        `<table class="res"><tr><th>이름</th><th>처치</th><th>부숨</th><th>막음</th><th>합동기술</th><th>니 탓</th></tr>` +
-        r.rows.map(x => `<tr><td>${esc(x.name)}</td><td>${x.kills}</td><td>${x.breaks}</td><td>${x.blocks}</td><td>${x.combos}</td><td>${x.blame}</td></tr>`).join('') + '</table>' +
+        `<table class="res"><tr><th>이름</th><th>해결</th><th>처치</th><th>부숨</th><th>막음</th><th>합동</th><th>니 탓</th></tr>` +
+        r.rows.map(x => `<tr><td>${esc(x.name)}${x.causes && Object.keys(x.causes).length ? `<div class="causes">${Object.entries(x.causes).sort((a, b) => b[1] - a[1]).map(([c, n]) => esc(CAUSE[c] || c) + ' ' + n).join(' · ')}</div>` : ''}</td><td class="good">${x.solves || 0}</td><td>${x.kills}</td><td>${x.breaks}</td><td>${x.blocks}</td><td>${x.combos}</td><td class="bad">${x.blame}</td></tr>`).join('') + '</table>' +
         '<div class="titles">' + (r.mvp ? `<div>MVP — ${nm(r.mvp)}</div>` : '') + (r.blamer && r.rows.length > 1 ? `<div class="b">니 탓 왕 — ${nm(r.blamer)}</div>` : '') + `<div class="w">마법사 탓 — ${r.wizard}회</div></div>` +
         (isHost ? '<button class="btn main" id="b-again">다시 하기</button>' : '<p class="ms" style="margin-top:12px">방장이 다시 시작할 수 있어요</p>');
     }
