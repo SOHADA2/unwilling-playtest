@@ -127,6 +127,7 @@
     if (mouseX == null || !snap) return;
     const r = cv.getBoundingClientRect();
     const w = rend.toWorld((mouseX - r.left) / r.width * VW, (mouseY - r.top) / r.height * VH, snap.b[1]);
+    if (w[0] == null) return;
     const nx = Math.round(w[0] * 10) / 10, ny = Math.round(w[1] * 10) / 10;
     if (nx !== myIn.mx || ny !== myIn.my) { myIn.mx = nx; myIn.my = ny; dirty = true; }
   }
@@ -293,7 +294,16 @@
 
   // ---------------- 메인 루프 ----------------
   let acc = 0, last = performance.now(), sendT = 0;
+  // 한 프레임에서 오류가 나도 루프는 계속 돈다 (예전엔 오류 하나로 화면이 영원히 멈췄다)
+  let lastErr = '';
   function frame(now) {
+    requestAnimationFrame(frame);
+    try { tick(now); } catch (e) {
+      const m = String(e && e.message || e);
+      if (m !== lastErr) { lastErr = m; console.error(e); try { toast('오류: ' + m, 'wiz'); } catch (_) { } }
+    }
+  }
+  function tick(now) {
     const dt = Math.min(0.25, (now - last) / 1000); last = now;
     if (game) {
       if (bot && !window.__botOff) bot.drive(game, myIn, dt);
@@ -314,7 +324,6 @@
       hud(snap, dt);
     }
     sendInput(now);
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
   window.__tus = { get game() { return game; }, get snap() { return snap; }, get net() { return net; }, get lobby() { return lobby; }, get myId() { return myId; } };

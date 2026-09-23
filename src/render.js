@@ -68,6 +68,7 @@
   P.P = function (x, y, z) { return [Math.round(x - y - this.ox), Math.round((x + y) / 2 - z - this.oy)]; };
   // 화면 픽셀 → 세계 좌표 (마우스 조준용). 높이는 몸이 서 있는 바닥 기준으로 근사
   P.toWorld = function (px, py, refY) {
+    if (!this.lv) return [null, null]; // 아직 한 번도 안 그렸으면 조준 불가
     const sx = px + this.ox, sy = py + this.oy + this.hAt(refY);
     return [sy + sx / 2, sy - sx / 2];
   };
