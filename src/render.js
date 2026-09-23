@@ -74,9 +74,10 @@
   P.hAt = function (y) { const lv = this.lv, r = Math.max(0, Math.min(lv.h - 1, Math.floor(y / T))); return lv.hgt[r] || 0; };
   P.P = function (x, y, z) { return [Math.round(x - y - this.ox), Math.round((x + y) / 2 - z - this.oy)]; };
   // 화면 픽셀 → 세계 좌표 (마우스 조준용). 높이는 몸이 서 있는 바닥 기준으로 근사
-  P.toWorld = function (px, py, refY) {
+  // lift: 사람은 발이 아니라 몸통을 보고 클릭하므로, 그 높이만큼 올려서 바닥 위치로 되돌린다
+  P.toWorld = function (px, py, refY, lift) {
     if (!this.lv) return [null, null]; // 아직 한 번도 안 그렸으면 조준 불가
-    const sx = px + this.ox, sy = py + this.oy + this.hAt(refY);
+    const sx = px + this.ox, sy = py + this.oy + this.hAt(refY) + (lift || 0);
     return [sy + sx / 2, sy - sx / 2];
   };
 
@@ -250,6 +251,12 @@
     this.pressEyes(s, bp, be, now);
     this.guides(s, bp, be, now, opt);
     this.drawBubbles(bp, be, dt);
+    if (this.aimAt) {
+      const [ax, ay] = this.aimAt, k = 6 + Math.sin(now * 10);
+      x.strokeStyle = '#ffe27a'; x.lineWidth = 1; x.beginPath();
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { x.moveTo(ax + dx * k, ay + dy * (k - 3)); x.lineTo(ax + dx * k, ay + dy * k); x.lineTo(ax + dx * (k - 3), ay + dy * k); }
+      x.stroke();
+    }
     // 글자 팝업
     this.pops = this.pops.filter(p => (p.t -= dt) > 0);
     x.textAlign = 'center';

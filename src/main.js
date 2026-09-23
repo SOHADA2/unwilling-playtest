@@ -14,6 +14,7 @@
   const myIn = emptyInput();
   const bot = DEMO && !qs.has('nobot') ? new window.TUS_BOT() : null;
 
+  { const b = $('build'); if (b && b.textContent.includes('__BUILD__')) b.textContent = '빌드: 로컬'; }
   $('t-mode').innerHTML = MODE === 'local'
     ? '<b>같은 PC 시험 모드</b> — 창을 여러 개 띄워 나란히 두세요(탭은 뒤로 가면 멈춰요).'
     : '같은 PC에서 창 여러 개로 시험하려면 주소 끝에 <kbd>?local</kbd>';
@@ -132,7 +133,19 @@
   function updateMouseWorld() {
     if (mouseX == null || !snap) return;
     const r = cv.getBoundingClientRect();
-    const w = rend.toWorld((mouseX - r.left) / r.width * VW, (mouseY - r.top) / r.height * VH, snap.b[1]);
+    const px = (mouseX - r.left) / r.width * VW, py = (mouseY - r.top) / r.height * VH;
+    // 조준 보정: 커서가 적(또는 연습 표적) 그림 근처면 그 적의 발 위치를 정확히 조준
+    let best = null, bd = 15;
+    if (rend.lv) for (const en of snap.e) {
+      if (en[1] === 'rune') continue;
+      const p = rend.disp.get('e' + en[0]) || [en[2], en[3], en[4]];
+      const q = rend.P(p[0], p[1], rend.hAt(p[1]) + (p[2] || 0) + (en[1] === 'queen' ? 14 : 5));
+      const d = Math.hypot(q[0] - px, q[1] - py);
+      if (d < bd) { bd = d; best = { w: [p[0], p[1]], s: q }; }
+    }
+    rend.aimAt = best ? best.s : null;
+    // 아니면 몸통 높이(9px) 기준으로 되돌려서, 화면에서 본 방향 그대로 날아가게
+    const w = best ? best.w : rend.toWorld(px, py, snap.b[1], 9);
     if (w[0] == null) return;
     const nx = Math.round(w[0] * 10) / 10, ny = Math.round(w[1] * 10) / 10;
     if (nx !== myIn.mx || ny !== myIn.my) { myIn.mx = nx; myIn.my = ny; dirty = true; }
