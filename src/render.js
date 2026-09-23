@@ -65,7 +65,7 @@
       ant: sprite(ANT, PAL), antHit: sprite(ANT, Object.assign({}, PAL, { a: '#ffffff', A: '#ffe0e0' })),
     };
     this.gen = -1; this.fx = []; this.pops = []; this.shake = 0; this.flash = 0;
-    this.disp = new Map(); this.lastT = 0; this.bubbles = [];
+    this.disp = new Map(); this.lastT = 0; this.bubbles = []; this.rings = [];
     this.camX = null; this.camY = 0; this.ox = 0; this.oy = 0; this.lastCol = null; this.faceL = false; this.prevBX = null;
   }
   const P = Renderer.prototype;
@@ -97,9 +97,9 @@
     const add = (x, y, n, col, sp, life, g, z0) => { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = sp * (0.4 + Math.random()); this.fx.push({ x, y, z: z0 || 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: g ? 50 + Math.random() * 70 : 0, g, col, life, t: life }); } };
     const pop = (text, x, y, col, big) => this.pops.push({ text, x, y, col, t: 1.1, big });
     switch (ev.type) {
-      case 'break': add(ev.x, ev.y, 14, '#b07a3f', 50, 0.7, true, 6); this.shake = Math.max(this.shake, 2); break;
-      case 'kill': add(ev.x, ev.y, 10, ev.k === 'fly' ? '#d9ecff' : (ev.k === 'egg' ? '#efe3c8' : '#9be15a'), 45, 0.6, true, 6); if (ev.k === 'queen') { add(ev.x, ev.y, 60, '#f2c94c', 80, 1.4, true, 10); this.shake = 6; } break;
-      case 'block': add(ev.x, ev.y, 8, '#e8d27a', 45, 0.35, false, 8); break;
+      case 'break': add(ev.x, ev.y, 14, '#b07a3f', 50, 0.7, true, 6); this.shake = Math.max(this.shake, 2); this.rings.push({ x: ev.x, y: ev.y, t: 0.3, life: 0.3, col: '255,220,150', r: 22 }); break;
+      case 'kill': this.rings.push({ x: ev.x, y: ev.y, t: 0.35, life: 0.35, col: ev.k === 'queen' ? '255,210,90' : '255,120,120', r: ev.k === 'queen' ? 60 : 20 }); add(ev.x, ev.y, 10, ev.k === 'fly' ? '#d9ecff' : (ev.k === 'egg' ? '#efe3c8' : '#9be15a'), 45, 0.6, true, 6); if (ev.k === 'queen') { add(ev.x, ev.y, 60, '#f2c94c', 80, 1.4, true, 10); this.shake = 6; } break;
+      case 'block': add(ev.x, ev.y, 8, '#e8d27a', 45, 0.35, false, 8); this.rings.push({ x: ev.x, y: ev.y, t: 0.25, life: 0.25, col: '150,255,160', r: 14 }); break;
       case 'poof': add(ev.x, ev.y, 4, '#7fe3ff', 20, 0.25, false, 10); break;
       case 'hurt': this.shake = Math.max(this.shake, 3); this.flash = 0.25; pop('-' + ev.a, ev.x, ev.y, '#ff6b6b'); break;
       case 'land': if (s) add(s.b[0], s.b[1], 4, '#6b6190', 18, 0.3, false, 1); break;
@@ -181,6 +181,17 @@
     const list = [];
     this.tiles(s, now, list);
 
+    // 공격 예고 (하데스식): 여왕이 돌진할 길과 침이 날아갈 부채꼴을 바닥에 붉게
+    for (const en of s.e) {
+      if (en[1] !== 'queen' || (en[6] !== 'tele' && en[6] !== 'spitw')) continue;
+      const p = this.disp.get('e' + en[0]) || [en[2], en[3]], e0 = this.hAt(p[1]), a = en[8] || 0, pulse = 0.18 + Math.sin(now * 16) * 0.08;
+      const pts = [];
+      if (en[6] === 'tele') { const L = 170, w = 16, nx = -Math.sin(a), ny = Math.cos(a); pts.push([p[0] + nx * w, p[1] + ny * w], [p[0] + nx * w + Math.cos(a) * L, p[1] + ny * w + Math.sin(a) * L], [p[0] - nx * w + Math.cos(a) * L, p[1] - ny * w + Math.sin(a) * L], [p[0] - nx * w, p[1] - ny * w]); }
+      else { pts.push([p[0], p[1]]); for (let k = -6; k <= 6; k++) { const aa = a + k * 0.12; pts.push([p[0] + Math.cos(aa) * 130, p[1] + Math.sin(aa) * 130]); } }
+      const sp = pts.map(q => this.P(q[0], q[1], e0));
+      this.poly(sp, 'rgba(255,40,60,' + pulse.toFixed(2) + ')');
+      x.strokeStyle = 'rgba(255,90,90,0.8)'; x.lineWidth = 1; x.beginPath(); sp.forEach((q, i) => i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1])); x.closePath(); x.stroke();
+    }
     // 문 창살
     lv.rooms.forEach((room, i) => {
       const st = s.dr[i] || 0;
@@ -223,6 +234,10 @@
     this.prevBX = bp[0] - bp[1];
     const be = this.hAt(bp[1]);
     this.shadow(bp[0], bp[1], be, 6, bp[2]);
+    if (!this.trail) this.trail = [];
+    if ((b[4] || bp[2] > 3) && s.st === 'play') this.trail.push({ x: bp[0], y: bp[1], z: bp[2], f: b[4] ? 'crouch' : 'air', L: this.faceL, t: 0.22 });
+    this.trail = this.trail.filter(t => (t.t -= dt) > 0);
+    for (const tr of this.trail) list.push({ d: tr.x + tr.y - 0.5, f: () => { const q = this.P(tr.x, tr.y, this.hAt(tr.y) + tr.z), img = this.spr.mageHit[tr.f]; x.save(); x.globalAlpha = tr.t / 0.22 * 0.35; if (tr.L) { x.translate(q[0], 0); x.scale(-1, 1); x.translate(-q[0], 0); } x.drawImage(img, q[0] - 8, q[1] - img.height); x.restore(); } });
     list.push({ d: bp[0] + bp[1], f: () => this.wizard(bp, b, s, now, be) });
     // 적
     for (const en of s.e) {
@@ -252,10 +267,16 @@
     if (s.sw) {
       const w = s.sw, c0 = this.P(bp[0], bp[1], be + 8), q = this.P(w.x, w.y, this.hAt(w.y) + 6);
       const a = Math.atan2(q[1] - c0[1], q[0] - c0[0]);
-      x.strokeStyle = 'rgba(255,255,255,0.85)'; x.lineWidth = 2;
-      x.beginPath(); x.arc(c0[0], c0[1], 16, a - 1.1, a + 1.1); x.stroke();
-      x.fillStyle = '#9aa0b0'; x.fillRect(q[0] - 3, q[1] - 3, 6, 5);
+      const k2 = (s.sw.t || 0.15) / 0.15;
+      x.globalCompositeOperation = 'lighter';
+      x.fillStyle = 'rgba(255,240,200,' + (0.55 * k2 + 0.3).toFixed(2) + ')';
+      x.beginPath(); x.arc(c0[0], c0[1], 20, a - 1.25, a + 1.25); x.arc(c0[0] + Math.cos(a) * 5, c0[1] + Math.sin(a) * 5, 14, a + 1.1, a - 1.1, true); x.closePath(); x.fill();
+      x.globalCompositeOperation = 'source-over';
+      x.strokeStyle = '#ffffff'; x.lineWidth = 1; x.beginPath(); x.arc(c0[0], c0[1], 20, a - 1.1, a + 1.1); x.stroke();
     }
+    // 충격파 고리
+    this.rings = this.rings.filter(r => (r.t -= dt) > 0);
+    for (const r of this.rings) { const k = 1 - r.t / r.life, q = this.P(r.x, r.y, this.hAt(r.y) + 2); x.strokeStyle = 'rgba(' + r.col + ',' + (1 - k).toFixed(2) + ')'; x.lineWidth = 2; x.beginPath(); x.ellipse(q[0], q[1], 3 + r.r * k, (3 + r.r * k) / 2, 0, 0, Math.PI * 2); x.stroke(); }
     // 파티클
     this.fx = this.fx.filter(p => (p.t -= dt) > 0);
     for (const p of this.fx) {
@@ -271,6 +292,10 @@
     x.fillStyle = 'rgba(230,220,255,0.55)';
     for (const m of this.motes) { m.x = (m.x + m.vx * dt + VW) % VW; m.y = (m.y + m.vy * dt + VH) % VH; x.fillRect(Math.round(m.x), Math.round(m.y), 1, 1); }
     this.lighting(s, now);
+    if (!this.embers) this.embers = Array.from({ length: 22 }, (_, i) => ({ x: hash(i, 21) * VW, y: hash(i, 23) * VH, v: 8 + hash(i, 25) * 14, c: i % 3 ? 'rgba(255,150,80,' : 'rgba(200,140,255,' }));
+    x.globalCompositeOperation = 'lighter';
+    for (const m of this.embers) { m.y -= m.v * dt; m.x += Math.sin(now * 2 + m.v) * 0.2; if (m.y < -4) { m.y = VH + 4; m.x = Math.random() * VW; } const a = 0.35 + Math.sin(now * 5 + m.v) * 0.25; x.fillStyle = m.c + a.toFixed(2) + ')'; x.fillRect(Math.round(m.x), Math.round(m.y), 1, 2); }
+    x.globalCompositeOperation = 'source-over';
     this.pressEyes(s, bp, be, now);
     this.guides(s, bp, be, now, opt);
     this.drawBubbles(bp, be, dt);
@@ -404,6 +429,10 @@
     const isFloor = t => t === '.' || t === 'D';
     const isOpen = t => isFloor(t) || t === ' ';
     const colRow = r => lv.rowKind[r] === 'stair' && r * T + 8 > col;
+    // 앞쪽 벽(바닥보다 화면 앞) = 이제 벽 대신 난간을 그리고 그 너머는 심연 → 떠 있는 발판처럼
+    const isFront = (c, r) => g(c, r) === '#' && !(isOpen(g(c + 1, r)) || isOpen(g(c, r + 1)) || isOpen(g(c + 1, r + 1))) && (isOpen(g(c - 1, r)) || isOpen(g(c, r - 1)) || isOpen(g(c - 1, r - 1)));
+    const edgeR = (c, r) => g(c + 1, r) === ' ' || isFront(c + 1, r);
+    const edgeB = (c, r) => g(c, r + 1) === ' ' || isFront(c, r + 1) || (colRow(r + 1) && !colRow(r));
     // 보이는 줄 범위: 카메라가 보는 줄 기준
     const midR = Math.floor(s.ct[1] / T), r0 = Math.max(0, midR - 34), r1 = Math.min(lv.h - 1, midR + 30);
     for (let r = r0; r <= r1; r++) {
@@ -441,9 +470,27 @@
           // 계단 단 (다음 줄이 더 낮으면 앞면)
           const e2 = lv.hgt[r + 1];
           if (e2 != null && e2 < e && isFloor(g(c, r + 1))) { this.box(px, py + T, px + T, py + T, e2 - drop, e - e2, null, '#2b2540', null); const a = this.P(px, py + T, ee), b2 = this.P(px + T, py + T, ee); this.x.strokeStyle = '#766a9a'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(a[0], a[1] - 0.5); this.x.lineTo(b2[0], b2[1] - 0.5); this.x.stroke(); }
-          // 낭떠러지 옆면
-          if (g(c, r + 1) === ' ' || (colRow(r + 1) && !colRow(r))) this.box(px, py, px + T, py + T, ee - 14, 14, null, '#241f33', null);
-          if (g(c + 1, r) === ' ') this.box(px, py, px + T, py + T, ee - 14, 14, null, null, '#2c263d');
+          // 가장자리 상감(금빛 테두리선) — 벽·허공과 맞닿은 변을 따라
+          { const x = this.x; x.strokeStyle = 'rgba(200,154,58,0.55)'; x.lineWidth = 1;
+            const line = (ax, ay, bx, by) => { const a = this.P(ax, ay, ee), b2 = this.P(bx, by, ee); x.beginPath(); x.moveTo(a[0] + 0.5, a[1] + 0.5); x.lineTo(b2[0] + 0.5, b2[1] + 0.5); x.stroke(); };
+            if (g(c - 1, r) === '#' || g(c - 1, r) === ' ') line(px + 3, py, px + 3, py + T);
+            if (edgeR(c, r)) line(px + T - 3, py, px + T - 3, py + T);
+            if (g(c, r - 1) === '#' && lv.rowKind[r] !== 'stair') line(px, py + 3, px + T, py + 3);
+            if (edgeB(c, r) && lv.rowKind[r] !== 'stair') line(px, py + T - 3, px + T, py + T - 3);
+            if (r % 2 === 0 && (edgeR(c, r) || g(c - 1, r) === '#')) { const m = this.P(edgeR(c, r) ? px + T - 3 : px + 3, py + 8, ee); x.fillStyle = '#e8c46a'; x.fillRect(m[0] - 1, m[1] - 1, 2, 2); }
+          }
+          // 발판 두께(아래로 떨어지는 면) + 보라색으로 빛나는 테두리 = 심연 위에 떠 있는 느낌
+          const eB = edgeB(c, r), eR = edgeR(c, r);
+          if (eB) this.box(px, py, px + T, py + T, ee - 22, 22, null, '#1d1830', null);
+          if (eR) this.box(px, py, px + T, py + T, ee - 22, 22, null, null, '#241e3a');
+          if (eB || eR) {
+            const x = this.x, pulse = 0.55 + Math.sin(now * 2 + c + r) * 0.2;
+            x.strokeStyle = 'rgba(199,160,255,' + pulse.toFixed(2) + ')'; x.lineWidth = 1; x.beginPath();
+            if (eB) { const a = this.P(px, py + T, ee), b2 = this.P(px + T, py + T, ee); x.moveTo(a[0], a[1]); x.lineTo(b2[0], b2[1]); }
+            if (eR) { const a = this.P(px + T, py, ee), b2 = this.P(px + T, py + T, ee); x.moveTo(a[0], a[1]); x.lineTo(b2[0], b2[1]); }
+            x.stroke();
+            if ((c + r) % 3 === 0) { const m = this.P(px + (eR ? T : 8), py + (eB ? T : 8), ee); this.lights.push({ x: m[0], y: m[1], r: 22, c: 'rgba(170,120,255,0.10)' }); }
+          }
           if (t === 'D') { const m = this.P(px + 8, py + 8, ee); this.x.fillStyle = 'rgba(205,184,255,0.25)'; this.x.fillRect(m[0] - 1, m[1], 3, 1); }
         } else if (t === '#') {
           const behind = isOpen(g(c + 1, r)) || isOpen(g(c, r + 1)) || isOpen(g(c + 1, r + 1));
@@ -455,15 +502,9 @@
             const al = alpha;
             list.push({ d: (c + r + 1) * T, f: () => { this.x.globalAlpha = al; this.wall(px, py, ee, 40, n, deco, now); this.x.globalAlpha = 1; } });
           } else if (front) {
-            // 앞쪽 벽: 발목 높이만 단단히, 위쪽은 반투명 (안에 있다는 느낌은 주되 가리지 않게)
-            const al = alpha;
-            list.push({ d: (c + r + 1) * T, f: () => {
-              this.x.globalAlpha = al; this.box(px, py, px + T, py + T, ee, 6, '#2a2440', '#3b3452', '#443c5c');
-              this.x.globalAlpha = al * 0.14; this.box(px, py, px + T, py + T, ee + 6, 34, '#8a7fb8', '#5b5277', '#6a6090');
-              this.x.globalAlpha = al * 0.5; const A = this.P(px, py, ee + 40), B = this.P(px + T, py, ee + 40), C = this.P(px + T, py + T, ee + 40), D = this.P(px, py + T, ee + 40);
-              this.x.strokeStyle = '#9d92c8'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(A[0], A[1]); this.x.lineTo(B[0], B[1]); this.x.lineTo(C[0], C[1]); this.x.lineTo(D[0], D[1]); this.x.closePath(); this.x.stroke();
-              this.x.globalAlpha = 1;
-            } });
+            // 앞쪽: 벽 대신 장식 난간 (그 너머는 심연과 마력 기둥이 보인다)
+            const al = alpha, L = isOpen(g(c - 1, r)), U = isOpen(g(c, r - 1));
+            list.push({ d: (c + r + 1) * T - 8, f: () => { this.x.globalAlpha = al; this.railing(px, py, ee, L, U, now); this.x.globalAlpha = 1; } });
           }
         }
       }
@@ -493,6 +534,16 @@
     }
     x.fillStyle = '#1a1426'; [[14, 6], [18, 10], [11, 11]].forEach(p => { const q = this.P(st.x + p[0], st.y + p[1], se); x.fillRect(q[0], q[1], 2, 1); });
   };
+  // 장식 난간: 바닥과 맞닿은 변을 따라 기둥 + 손잡이
+  P.railing = function (px, py, e, left, top, now) {
+    const post = (x0, y0) => this.box(x0 - 1, y0 - 1, x0 + 1, y0 + 1, e, 10, '#8a7fb8', '#3b3452', '#5a5178');
+    if (left) { for (const yy of [2, 8, 14]) post(px + 2, py + yy); this.box(px + 1, py, px + 3, py + T, e + 10, 2, '#b3a6e0', '#4a4262', '#6a6090'); }
+    if (top) { for (const xx of [2, 8, 14]) post(px + xx, py + 2); this.box(px, py + 1, px + T, py + 3, e + 10, 2, '#b3a6e0', '#4a4262', '#6a6090'); }
+    if (!left && !top) post(px + 2, py + 2);
+    const m = this.P(px + (left ? 2 : 8), py + (top ? 2 : 8), e + 12);
+    this.x.fillStyle = 'rgba(230,200,255,0.8)'; this.x.fillRect(m[0], m[1] - 1, 1, 1);
+  };
+
   // 오른앞면(x = px+T 평면) / 왼앞면(y = py+T 평면) 위의 사각형
   P.wallFaceR = function (px, py, e, ya, yb, z0, z1, fill) { this.poly([this.P(px + T, py + ya, e + z1), this.P(px + T, py + yb, e + z1), this.P(px + T, py + yb, e + z0), this.P(px + T, py + ya, e + z0)], fill); };
   P.wallFaceL = function (px, py, e, xa, xb, z0, z1, fill) { this.poly([this.P(px + xa, py + T, e + z1), this.P(px + xb, py + T, e + z1), this.P(px + xb, py + T, e + z0), this.P(px + xa, py + T, e + z0)], fill); };
@@ -621,7 +672,7 @@
       x.fillStyle = '#ffffff'; x.fillRect(sx - 1, top - 1, 1, 1); x.fillRect(sx, top, 2, 1); x.fillRect(sx + 1, top + 1, 1, 1);
       if (rh > 0) { x.fillStyle = 'rgba(160,230,255,' + (rh * 0.8).toFixed(2) + ')'; x.fillRect(sx - 3, top - 3, 7, 7); }
     }
-    x.drawImage(img, X - 8, Y - h);
+    x.filter = 'drop-shadow(0 0 1px rgba(120,220,255,0.95))'; x.drawImage(img, X - 8, Y - h); x.filter = 'none';
     // 방패 (왼손 · 앞쪽): 망치질하면 앞으로 내지름
     x.drawImage(this.spr.shield, X - 11 + Math.round(lh * 5), Y - h + (crouch ? 9 : 11) - Math.round(lh * 2));
     if (slide) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillRect(X - 13, Y - 3, 4, 1); x.fillRect(X - 15, Y - 6, 4, 1); }
@@ -651,19 +702,19 @@
       return;
     }
     if (kind === 'ant') {
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10 + (Math.floor(now * 10 + en[0]) % 2), 15, 10);
+      x.filter = en[7] ? 'none' : 'drop-shadow(0 0 1px rgba(255,80,80,0.95))'; x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10 + (Math.floor(now * 10 + en[0]) % 2), 15, 10); x.filter = 'none';
     } else if (kind === 'fly') {
       const flap = Math.floor(now * 16 + en[0]) % 2;
       x.fillStyle = 'rgba(217,236,255,0.8)';
       x.fillRect(X - 13, Y - 14 - flap * 2, 8, 3); x.fillRect(X + 5, Y - 14 - flap * 2, 8, 3);
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10, 15, 10);
+      x.filter = en[7] ? 'none' : 'drop-shadow(0 0 1px rgba(255,80,80,0.95))'; x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10, 15, 10); x.filter = 'none';
     } else if (kind === 'egg') {
       const t = en[6], pulse = t < 2 ? (Math.floor(now * 8) % 2) : 0;
       x.fillStyle = '#1a1426'; x.beginPath(); x.ellipse(X, Y - 5, 6 + pulse, 7 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = hit ? '#ffffff' : '#efe3c8'; x.beginPath(); x.ellipse(X, Y - 5, 5 + pulse, 6 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = '#c9a97a'; x.fillRect(X - 2, Y - 8, 1, 4); x.fillRect(X + 1, Y - 6, 1, 3);
     } else if (kind === 'queen') {
-      x.save(); x.translate(X, Y); x.scale(1.3, 1.3); x.translate(-X, -Y);
+      x.save(); x.translate(X, Y); x.scale(1.3, 1.3); x.translate(-X, -Y); x.filter = 'drop-shadow(0 0 2px rgba(255,60,60,0.9))';
       const act = en[6];
       const tele = act === 'tele' && Math.floor(now * 12) % 2;
       const o = '#1a1426', body = hit ? '#ffffff' : '#7a2418', light = hit ? '#ffe0e0' : '#a8392a';

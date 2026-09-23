@@ -259,6 +259,7 @@
     }
     if (this.state === 'vote') { this.stepVote(dt); this.pruneEvents(); return; }
     if (this.state === 'over' || this.state === 'clear') { this.pruneEvents(); return; }
+    if (this.hitStop > 0) { this.hitStop -= dt; this.pruneEvents(); return; } // 처치 순간 멈칫 (타격감)
     this.stepBody(dt);
     this.stepCamera(dt);
     this.stepRollers(dt);
@@ -683,6 +684,7 @@
       if (this.pstats[pid]) { if (e.k === 'egg' || e.k === 'crate') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
       if (e.tr) this.tutDone(e.k === 'crate' ? 'lh' : e.k === 'ant' ? 'rh' : 'atk');
       this.emit('kill', { k: e.k, x: r1(e.x), y: r1(e.y - e.z) });
+      if (!e.tr) this.hitStop = e.k === 'queen' ? 0.35 : 0.06;
       if (e.k === 'ant' || e.k === 'fly' || e.k === 'egg' || e.k === 'crate') this.solve(e.k === 'fly' ? 'fly' : e.k === 'ant' ? 'ant' : 'crate', [role]);
       if (e.k === 'queen') this.finish('clear');
     }
@@ -801,9 +803,7 @@
         const a = q.seq.pop();
         const rest = q.p2 ? 1.3 : 2.0;
         if (a === 'spit') {
-          const n = q.p2 ? 7 : 5, base = Math.atan2((b.y - 6) - (q.y - 8), b.x - q.x);
-          for (let i = 0; i < n; i++) { const ang = base + (i - (n - 1) / 2) * 0.22; this.eshots.push({ x: q.x, y: q.y - 8, vx: Math.cos(ang) * 80, vy: Math.sin(ang) * 80, life: 4, id: this.nextId++ }); }
-          this.emit('spit', {}); q.actT = rest;
+          q.act = 'spitw'; q.actT = 0.55; q.aim = Math.atan2((b.y - 6) - (q.y - 8), b.x - q.x); q.rest = rest;
         } else if (a === 'summon') {
           const n = q.p2 ? 4 : 3;
           for (let i = 0; i < n; i++) this.newEnemy('ant', q.x + rnd(-24, 24), q.y + rnd(8, 20), q.room);
@@ -819,6 +819,12 @@
           for (let i = 0; i < 2 && flies + i < 4; i++) this.newEnemy('fly', q.x + (i ? 30 : -30), q.y, q.room);
           this.emit('larva', {}); q.actT = rest;
         }
+      }
+    } else if (q.act === 'spitw') {
+      if (q.actT <= 0) {
+        const n = q.p2 ? 7 : 5;
+        for (let i = 0; i < n; i++) { const ang = q.aim + (i - (n - 1) / 2) * 0.22; this.eshots.push({ x: q.x, y: q.y - 8, vx: Math.cos(ang) * 80, vy: Math.sin(ang) * 80, life: 4, id: this.nextId++ }); }
+        this.emit('spit', {}); q.act = 'idle'; q.actT = q.rest || 2;
       }
     } else if (q.act === 'tele') {
       q.dvx = dx / d; q.dvy = dy / d;
@@ -949,7 +955,7 @@
       b: [r1(b.x), r1(b.y), r1(b.z), b.crouch ? 1 : 0, b.slide > 0 ? 1 : 0, b.inv > 0 ? 1 : 0, r1(b.faceX), r1(b.vx)],
       hp: Math.ceil(this.hp), mhp: this.stats.mhp, mp: Math.floor(this.mana), lv: this.lv, xp: this.xp, xpn: this.xpNeed,
       sab: [this.sab.phase, this.sab.line, r1(this.sab.t), this.sab.kind || 'rev'],
-      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0), e.tr ? 1 : 0]),
+      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0), e.tr ? 1 : 0, e.k === 'queen' ? r1(e.act === 'spitw' ? e.aim : Math.atan2(e.dvy || 0, e.dvx || 0)) : 0]),
       sh: this.shots.map(x => [x.id, x.k, r1(x.x), r1(x.y)]),
       es: this.eshots.map(x => [x.id, r1(x.x), r1(x.y)]),
       sp: [r1(s.ax), r1(s.ay), r1(s.dx), r1(s.dy), r1(this.stats.defR)],

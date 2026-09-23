@@ -47,14 +47,17 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 #stage{position:relative;flex:none}
 #cv{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;cursor:crosshair}
 .hud{position:absolute;pointer-events:none;font-size:12px;text-shadow:1px 1px 0 #08070e}
-#h-stats{left:8px;top:8px;display:grid;gap:3px;background:rgba(13,11,22,.78);border:2px solid var(--line);padding:6px 8px;min-width:180px}
+#h-stats{left:8px;top:8px;display:grid;gap:4px;background:linear-gradient(180deg,rgba(24,16,36,.92),rgba(10,8,18,.92));border:1px solid #8a6a2a;box-shadow:0 0 0 1px #1a1426,inset 0 0 0 1px rgba(200,154,58,.25);padding:7px 10px;min-width:190px}
+#h-stats::before,#h-stats::after{content:"";position:absolute;width:6px;height:6px;border:1px solid #e8c46a;transform:rotate(45deg);background:#1a1426;top:-4px}
+#h-stats::before{left:-4px}#h-stats::after{right:-4px}
 .bar{display:grid;grid-template-columns:24px 1fr 60px;align-items:center;gap:6px;font-size:11px}
-.bar .tr{height:9px;background:#08070e;border:1px solid #3a3350;position:relative}
-.bar .fl{position:absolute;inset:0 auto 0 0;background:var(--c)}
+.bar .tr{height:9px;background:#08070e;border:1px solid #5a4a2a;position:relative;overflow:hidden}
+.bar .tr::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 11px,rgba(8,7,14,.7) 11px 12px)}
+.bar .fl{position:absolute;inset:0 auto 0 0;background:linear-gradient(180deg,rgba(255,255,255,.35),transparent 45%),var(--c);transition:width .15s}
 .bar .v{text-align:right;color:var(--dim)}
-#h-boss{left:50%;top:8px;transform:translateX(-50%);width:min(320px,50%);text-align:center}
-#h-boss .tr{height:10px;background:#08070e;border:2px solid #7a2418;position:relative;margin-top:3px}
-#h-boss .fl{position:absolute;inset:0 auto 0 0;background:#c2553a}
+#h-boss{left:50%;top:8px;transform:translateX(-50%);width:min(360px,56%);text-align:center;font-family:"Galmuri14",monospace;font-size:14px;color:#ffd6c8;letter-spacing:.12em;text-shadow:0 0 6px rgba(255,60,60,.7),1px 1px 0 #000}
+#h-boss .tr{height:12px;background:#08070e;border:1px solid #e8c46a;box-shadow:0 0 0 1px #1a1426,0 0 10px rgba(255,60,60,.4);position:relative;margin-top:4px}
+#h-boss .fl{position:absolute;inset:0 auto 0 0;background:linear-gradient(180deg,#ff8a6a,#b8261c);transition:width .2s}
 #h-feed{right:8px;top:8px;display:grid;gap:3px;justify-items:end;max-width:46%}
 #h-feed div{background:rgba(13,11,22,.8);border-left:3px solid var(--red);padding:3px 8px;font-size:11px;transition:opacity .4s}
 #h-feed div.wiz{border-left-color:var(--purple);color:#e4c8ff}
@@ -166,7 +169,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 
 <section class="screen" id="title">
   <div class="box">
-    <img class="logo" src="assets/logo.png?v=mudrxtpc" alt="The Unwilling Summoned">
+    <img class="logo" src="assets/logo.png?v=muds4ysn" alt="The Unwilling Summoned">
     <h1 class="title-kr">소환되고 싶지 않아 (니들이랑)</h1>
     <p class="sub">프로토타입 · 마탑 B3 소환실 · 2~4인 협동</p>
     <label class="f" for="nm">내 이름</label>
@@ -187,7 +190,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
       이동: <kbd>W</kbd><kbd>S</kbd> 앞뒤 · <kbd>A</kbd><kbd>D</kbd> 좌우 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프 · <kbd>C</kbd> 앉기<br>
       공격: <kbd>좌클릭</kbd> 왼손 망치 · <kbd>우클릭</kbd> 오른손 마법 · <kbd>마우스</kbd> 정령<br>
       <span id="t-mode"></span><br>
-      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:21</span>
+      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:26</span>
     </p>
   </div>
 </section>
@@ -236,13 +239,13 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 <button id="mute" type="button">소리 켜짐 (M)</button>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/level.js?v=mudrxtpc"></script>
-<script src="src/game.js?v=mudrxtpc"></script>
-<script src="src/bot.js?v=mudrxtpc"></script>
-<script src="src/wizard.js?v=mudrxtpc"></script>
-<script src="src/render.js?v=mudrxtpc"></script>
-<script src="src/prologue.js?v=mudrxtpc"></script>
-<script src="src/net.js?v=mudrxtpc"></script>
-<script src="src/main.js?v=mudrxtpc"></script>
+<script src="src/level.js?v=muds4ysn"></script>
+<script src="src/game.js?v=muds4ysn"></script>
+<script src="src/bot.js?v=muds4ysn"></script>
+<script src="src/wizard.js?v=muds4ysn"></script>
+<script src="src/render.js?v=muds4ysn"></script>
+<script src="src/prologue.js?v=muds4ysn"></script>
+<script src="src/net.js?v=muds4ysn"></script>
+<script src="src/main.js?v=muds4ysn"></script>
 </body>
 </html>
