@@ -127,7 +127,15 @@
 
     // 배경
     x.setTransform(1, 0, 0, 1, 0, 0);
-    x.fillStyle = '#07060d'; x.fillRect(0, 0, VW, VH);
+    if (!this.bg) { this.bg = x.createLinearGradient(0, 0, 0, VH); this.bg.addColorStop(0, '#0d0a1c'); this.bg.addColorStop(1, '#040309'); }
+    x.fillStyle = this.bg; x.fillRect(0, 0, VW, VH);
+    // 탑 아래 심연에 떠다니는 희미한 빛 (카메라보다 느리게 움직여 깊이감)
+    for (let i = 0; i < 26; i++) {
+      const hx = hash(i, 7), hy = hash(i, 13);
+      const px = ((hx * 900 - this.ox * 0.25) % VW + VW) % VW, py = ((hy * 700 - this.oy * 0.25) % VH + VH) % VH;
+      x.fillStyle = i % 3 ? 'rgba(140,110,220,0.25)' : 'rgba(110,160,255,0.3)'; x.fillRect(Math.round(px), Math.round(py), 1, 1);
+    }
+    this.lights = [];
 
     // 무너지는 계단 먼지
     if (this.lastCol != null && s.col < this.lastCol - 0.5) {
@@ -190,15 +198,18 @@
       list.push({ d: p[0] + p[1] + (en[1] === 'fly' ? 40 : 0), f: () => this.enemy(en[1], p, en, now, e) });
     }
     list.sort((a, c) => a.d - c.d).forEach(o => o.f());
+    this.lights.push({ x: this.P(bp[0], bp[1], be + bp[2] + 18)[0] + (this.faceL ? -7 : 7), y: this.P(bp[0], bp[1], be + bp[2] + 18)[1], r: 105, c: 'rgba(110,150,255,0.10)' });
 
     // 정령
     const sp = s.sp;
     const ap = this.sm('spa', sp[0], sp[1], 0, Math.min(1, dt * 25)), dp = this.sm('spd', sp[2], sp[3], 0, Math.min(1, dt * 25));
     this.spiritAtk(ap[0], ap[1], this.hAt(ap[1]) + 18, now);
+    { const q = this.P(ap[0], ap[1], this.hAt(ap[1]) + 18); this.lights.push({ x: q[0], y: q[1], r: 40, c: 'rgba(255,140,60,0.16)' }); }
     this.spiritDef(dp[0], dp[1], this.hAt(dp[1]) + 8, sp[4], now);
     // 투사체
     for (const p of s.sh) {
       const q = this.P(p[2], p[3], this.hAt(p[3]) + 10);
+      this.lights.push({ x: q[0], y: q[1], r: 22, c: p[1] === 'rh' ? 'rgba(90,200,255,0.2)' : 'rgba(255,150,60,0.2)' });
       if (p[1] === 'rh') { x.fillStyle = '#2a9bd8'; x.fillRect(q[0] - 2, q[1] - 2, 5, 5); x.fillStyle = '#bff3ff'; x.fillRect(q[0] - 1, q[1] - 1, 3, 3); }
       else { x.fillStyle = '#ff7b2e'; x.fillRect(q[0] - 2, q[1] - 2, 4, 4); x.fillStyle = '#ffe27a'; x.fillRect(q[0] - 1, q[1] - 1, 2, 2); }
     }
@@ -221,6 +232,12 @@
       x.globalAlpha = Math.min(1, p.t / p.life * 1.5); x.fillStyle = p.col; x.fillRect(q[0], q[1], 2, 2);
     }
     x.globalAlpha = 1;
+    // 먼지 (빛 속에서만 보인다)
+    if (!this.motes) this.motes = Array.from({ length: 46 }, (_, i) => ({ x: hash(i, 3) * VW, y: hash(i, 5) * VH, vx: (hash(i, 9) - 0.5) * 6, vy: -2 - hash(i, 11) * 4 }));
+    x.fillStyle = 'rgba(230,220,255,0.55)';
+    for (const m of this.motes) { m.x = (m.x + m.vx * dt + VW) % VW; m.y = (m.y + m.vy * dt + VH) % VH; x.fillRect(Math.round(m.x), Math.round(m.y), 1, 1); }
+    this.lighting(s, now);
+    this.guides(s, bp, be, now, opt);
     // 글자 팝업
     this.pops = this.pops.filter(p => (p.t -= dt) > 0);
     x.textAlign = 'center';
@@ -234,13 +251,71 @@
     x.globalAlpha = 1;
 
     // 화면 효과: 가장자리 어둡게 + 사보타주 + 피격
-    const vg = x.createRadialGradient(VW / 2, VH / 2, VH * 0.35, VW / 2, VH / 2, VW * 0.62);
-    vg.addColorStop(0, 'rgba(7,6,13,0)'); vg.addColorStop(1, 'rgba(7,6,13,0.7)');
+    const vg = x.createRadialGradient(VW / 2, VH / 2, VH * 0.4, VW / 2, VH / 2, VW * 0.62);
+    vg.addColorStop(0, 'rgba(7,6,13,0)'); vg.addColorStop(1, 'rgba(7,6,13,0.55)');
     x.fillStyle = vg; x.fillRect(0, 0, VW, VH);
     if (sab === 'on') { x.fillStyle = 'rgba(120,40,200,0.18)'; x.fillRect(0, 0, VW, VH); }
     if (sab === 'warn' && Math.floor(now * 8) % 2) { x.fillStyle = 'rgba(160,80,255,0.12)'; x.fillRect(0, 0, VW, VH); }
     if (this.flash > 0) { this.flash -= dt; x.fillStyle = 'rgba(255,40,40,' + (this.flash * 0.8).toFixed(2) + ')'; x.fillRect(0, 0, VW, VH); }
     if (s.hp < s.mhp * 0.3 && s.st === 'play') { const a = 0.15 + Math.sin(now * 5) * 0.08; x.fillStyle = 'rgba(180,0,0,' + a.toFixed(2) + ')'; x.fillRect(0, 0, VW, 3); x.fillRect(0, VH - 3, VW, 3); x.fillRect(0, 0, 3, VH); x.fillRect(VW - 3, 0, 3, VH); }
+  };
+
+  // 어둠 위에 빛 구멍을 뚫고, 색 있는 빛은 더한다
+  P.lighting = function (s, now) {
+    if (!this.L) this.L = mk(VW, VH);
+    const L = this.L.getContext('2d'), x = this.x;
+    L.globalCompositeOperation = 'source-over'; L.clearRect(0, 0, VW, VH);
+    L.fillStyle = 'rgba(6,4,18,0.66)'; L.fillRect(0, 0, VW, VH);
+    L.globalCompositeOperation = 'destination-out';
+    for (const l of this.lights) {
+      const r = l.r * (l.flick ? 1 + Math.sin(now * 9 + l.x) * 0.05 : 1);
+      const g = L.createRadialGradient(l.x, l.y, 0, l.x, l.y, r);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(0,0,0,0.6)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      L.fillStyle = g; L.fillRect(l.x - r, l.y - r, r * 2, r * 2);
+    }
+    x.drawImage(this.L, 0, 0);
+    x.globalCompositeOperation = 'lighter';
+    for (const l of this.lights) {
+      if (!l.c) continue;
+      const r = l.r * 0.75, g = x.createRadialGradient(l.x, l.y, 0, l.x, l.y, r);
+      g.addColorStop(0, l.c); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g; x.fillRect(l.x - r, l.y - r, r * 2, r * 2);
+    }
+    x.globalCompositeOperation = 'source-over';
+  };
+
+  // 튜토리얼 안내: 내 담당 표적 위 화살표 + 이동 방향 나침반
+  P.guides = function (s, bp, be, now, opt) {
+    if (!s.tut || !s.tut.on || !opt.myId) return;
+    const x = this.x, mine = r => s.roles[r] === opt.myId && !s.tut.done[r];
+    const bob = Math.round(Math.sin(now * 6) * 2);
+    x.font = '10px "Galmuri11", "Galmuri9", monospace'; x.textAlign = 'center';
+    const label = (qx, qy, text) => { const w = x.measureText(text).width + 6; x.fillStyle = 'rgba(13,11,22,0.85)'; x.fillRect(qx - w / 2, qy - 9, w, 12); x.fillStyle = '#ffe27a'; x.fillText(text, qx, qy); };
+    const KEY = { crate: ['lh', '좌클릭'], ant: ['rh', '우클릭'], fly: ['atk', '정령을 여기로'], rune: ['def', '방패로 막기'] };
+    for (const en of s.e) {
+      if (!en[7]) continue;
+      const kk = KEY[en[1]]; if (!kk || !mine(kk[0])) continue;
+      const p = this.disp.get('e' + en[0]) || [en[2], en[3], en[4]];
+      const q = this.P(p[0], p[1], this.hAt(p[1]) + p[2] + 26);
+      x.fillStyle = '#1a1426'; x.beginPath(); x.moveTo(q[0] - 6, q[1] + bob - 1); x.lineTo(q[0] + 6, q[1] + bob - 1); x.lineTo(q[0], q[1] + bob + 7); x.fill();
+      x.fillStyle = '#ffe27a'; x.beginPath(); x.moveTo(q[0] - 4, q[1] + bob); x.lineTo(q[0] + 4, q[1] + bob); x.lineTo(q[0], q[1] + bob + 5); x.fill();
+      label(q[0], q[1] + bob - 4, kk[1]);
+    }
+    // 쿼터뷰에서 W/A/S/D가 어느 쪽인지
+    const dirs = [];
+    if (s.roles.fb === opt.myId) dirs.push(['W', 0, -30], ['S', 0, 30]);
+    if (s.roles.lr === opt.myId) dirs.push(['A', -30, 0], ['D', 30, 0]);
+    const c0 = this.P(bp[0], bp[1], be + 2);
+    for (const [k, dx, dy] of dirs) {
+      const q = this.P(bp[0] + dx, bp[1] + dy, be + 2);
+      const ang = Math.atan2(q[1] - c0[1], q[0] - c0[0]);
+      x.globalAlpha = 0.65 + Math.sin(now * 5) * 0.25;
+      x.strokeStyle = '#9fd4ff'; x.lineWidth = 1; x.beginPath(); x.moveTo(c0[0] + Math.cos(ang) * 10, c0[1] + Math.sin(ang) * 10); x.lineTo(q[0], q[1]); x.stroke();
+      x.fillStyle = '#9fd4ff'; x.beginPath(); x.moveTo(q[0] + Math.cos(ang) * 4, q[1] + Math.sin(ang) * 4); x.lineTo(q[0] + Math.cos(ang + 2.4) * 4, q[1] + Math.sin(ang + 2.4) * 4); x.lineTo(q[0] + Math.cos(ang - 2.4) * 4, q[1] + Math.sin(ang - 2.4) * 4); x.fill();
+      const lx = q[0] + Math.cos(ang) * 9, ly = q[1] + Math.sin(ang) * 9 + 4;
+      x.fillStyle = 'rgba(13,11,22,0.9)'; x.fillRect(lx - 5, ly - 9, 10, 12); x.fillStyle = '#ffffff'; x.fillText(k, lx, ly);
+      x.globalAlpha = 1;
+    }
   };
 
   P.sm = function (id, x, y, z, k) {
@@ -278,13 +353,23 @@
         if (q[0] < -40 || q[0] > VW + 40 || q[1] < -60 || q[1] > VH + 40) continue;
         if (isFloor(t)) {
           const stair = lv.rowKind[r] === 'stair';
-          let top = stair ? (r % 2 === 0 ? '#554c72' : '#4a4264') : ((c + r) % 2 ? '#463e5e' : '#4c4366');
-          if (n > 0.93) top = '#433b5a';
-          this.box(px, py, px + T, py + T, ee, 0, top, null, null);
+          let top = stair ? (r % 2 === 0 ? '#5a5178' : '#4f4769') : ((c + r) % 2 ? '#4a4262' : '#50476b');
+          if (n > 0.9) top = stair ? '#4c4466' : '#463e5d';
+          // 방 가운데 양탄자
+          const room = !stair && lv.rows[r][0] === '#' && lv.rows[r][1] !== '#' && t !== 'D';
+          if (room && c >= 10 && c <= 13) top = (c === 10 || c === 13) ? '#5e4a2c' : ((r % 2) ? '#4a1e31' : '#43192c');
+          // 판석: 줄눈(어두운 틈) 위에 한 칸 작은 돌판
+          this.box(px, py, px + T, py + T, ee, 0, '#2e2842', null, null);
+          this.box(px + 1, py + 1, px + T - 1, py + T - 1, ee, 0, top, null, null);
+          if (n < 0.05) { const a = this.P(px + 4, py + 5, ee), b2 = this.P(px + 9, py + 9, ee), c2 = this.P(px + 11, py + 7, ee); this.x.strokeStyle = '#2a243b'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(a[0], a[1]); this.x.lineTo(b2[0], b2[1]); this.x.lineTo(c2[0], c2[1]); this.x.stroke(); }
+          else if (n < 0.08) { const a = this.P(px + 5, py + 10, ee); this.x.fillStyle = '#3a3350'; this.x.fillRect(a[0], a[1], 2, 1); this.x.fillRect(a[0] + 4, a[1] + 1, 1, 1); }
+          // 벽 밑 그늘
+          if (g(c - 1, r) === '#') this.box(px, py, px + 5, py + T, ee, 0, 'rgba(0,0,0,0.3)', null, null);
+          if (g(c, r - 1) === '#') this.box(px, py, px + T, py + 5, ee, 0, 'rgba(0,0,0,0.3)', null, null);
           if (warn > 0) this.box(px, py, px + T, py + T, ee, 0, 'rgba(255,80,50,' + (warn * 0.35).toFixed(2) + ')', null, null);
           // 계단 단 (다음 줄이 더 낮으면 앞면)
           const e2 = lv.hgt[r + 1];
-          if (e2 != null && e2 < e && isFloor(g(c, r + 1))) this.box(px, py + T, px + T, py + T, e2 - drop, e - e2, null, '#2f2942', null);
+          if (e2 != null && e2 < e && isFloor(g(c, r + 1))) { this.box(px, py + T, px + T, py + T, e2 - drop, e - e2, null, '#2b2540', null); const a = this.P(px, py + T, ee), b2 = this.P(px + T, py + T, ee); this.x.strokeStyle = '#766a9a'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(a[0], a[1] - 0.5); this.x.lineTo(b2[0], b2[1] - 0.5); this.x.stroke(); }
           // 낭떠러지 옆면
           if (g(c, r + 1) === ' ' || (colRow(r + 1) && !colRow(r))) this.box(px, py, px + T, py + T, ee - 14, 14, null, '#241f33', null);
           if (g(c + 1, r) === ' ') this.box(px, py, px + T, py + T, ee - 14, 14, null, null, '#2c263d');
@@ -293,17 +378,30 @@
           const behind = isOpen(g(c + 1, r)) || isOpen(g(c, r + 1)) || isOpen(g(c + 1, r + 1));
           const front = isOpen(g(c - 1, r)) || isOpen(g(c, r - 1)) || isOpen(g(c - 1, r - 1));
           if (behind) {
-            const torch = isFloor(g(c + 1, r)) && !isFloor(g(c, r + 1)) && r % 5 === 0;
+            const rf = isOpen(g(c + 1, r)) && !isOpen(g(c, r + 1)), lf = isOpen(g(c, r + 1));
+            const inRoom = lv.rowKind[r] === 'room' || lv.rowKind[r + 1] === 'room';
+            const deco = rf ? (r % 6 === 2 ? 'torch' : r % 6 === 5 ? 'window' : (inRoom && r % 3 === 0 ? 'banner' : '')) : (lf && inRoom ? (c % 5 === 2 ? 'torchL' : c % 3 === 0 ? 'shelf' : c % 3 === 1 ? 'bannerL' : '') : '');
             const al = alpha;
-            list.push({ d: (c + r + 1) * T, f: () => { this.x.globalAlpha = al; this.wall(px, py, ee, 30, n, torch, now); this.x.globalAlpha = 1; } });
-          } else if (front) this.box(px, py, px + T, py + T, ee, 5, '#2a2440', '#3b3452', '#443c5c');
+            list.push({ d: (c + r + 1) * T, f: () => { this.x.globalAlpha = al; this.wall(px, py, ee, 40, n, deco, now); this.x.globalAlpha = 1; } });
+          } else if (front) {
+            // 앞쪽 벽: 발목 높이만 단단히, 위쪽은 반투명 (안에 있다는 느낌은 주되 가리지 않게)
+            const al = alpha;
+            list.push({ d: (c + r + 1) * T, f: () => {
+              this.x.globalAlpha = al; this.box(px, py, px + T, py + T, ee, 6, '#2a2440', '#3b3452', '#443c5c');
+              this.x.globalAlpha = al * 0.14; this.box(px, py, px + T, py + T, ee + 6, 34, '#8a7fb8', '#5b5277', '#6a6090');
+              this.x.globalAlpha = al * 0.5; const A = this.P(px, py, ee + 40), B = this.P(px + T, py, ee + 40), C = this.P(px + T, py + T, ee + 40), D = this.P(px, py + T, ee + 40);
+              this.x.strokeStyle = '#9d92c8'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(A[0], A[1]); this.x.lineTo(B[0], B[1]); this.x.lineTo(C[0], C[1]); this.x.lineTo(D[0], D[1]); this.x.closePath(); this.x.stroke();
+              this.x.globalAlpha = 1;
+            } });
+          }
         }
       }
       this.x.globalAlpha = 1;
     }
     // 시작 지점: 개미가 가루를 훔쳐 가 끊어진 소환 마법진
     const st = lv.start, se = this.hAt(st.y), x = this.x;
-    x.strokeStyle = 'rgba(205,184,255,0.5)'; x.lineWidth = 1;
+    { const q = this.P(st.x, st.y, se); this.lights.push({ x: q[0], y: q[1], r: 70, c: 'rgba(170,110,255,' + (0.1 + Math.sin(now * 2) * 0.04).toFixed(3) + ')' }); }
+    x.strokeStyle = 'rgba(205,184,255,' + (0.5 + Math.sin(now * 2) * 0.15).toFixed(2) + ')'; x.lineWidth = 1;
     for (const [rad, a0, a1] of [[22, 0.9, Math.PI * 2 + 0.2], [15, 1.4, Math.PI * 2 + 0.6]]) {
       x.beginPath();
       for (let a = a0; a <= a1; a += 0.1) { const q = this.P(st.x + Math.cos(a) * rad, st.y + Math.sin(a) * rad, se); if (a === a0) x.moveTo(q[0], q[1]); else x.lineTo(q[0], q[1]); }
@@ -311,19 +409,52 @@
     }
     x.fillStyle = '#1a1426'; [[14, 6], [18, 10], [11, 11]].forEach(p => { const q = this.P(st.x + p[0], st.y + p[1], se); x.fillRect(q[0], q[1], 2, 1); });
   };
-  P.wall = function (px, py, e, H, n, torch, now) {
-    this.box(px, py, px + T, py + T, e, H, n < 0.1 ? '#2e2745' : '#2a2440', '#3b3452', '#4a4262');
+  // 오른앞면(x = px+T 평면) / 왼앞면(y = py+T 평면) 위의 사각형
+  P.wallFaceR = function (px, py, e, ya, yb, z0, z1, fill) { this.poly([this.P(px + T, py + ya, e + z1), this.P(px + T, py + yb, e + z1), this.P(px + T, py + yb, e + z0), this.P(px + T, py + ya, e + z0)], fill); };
+  P.wallFaceL = function (px, py, e, xa, xb, z0, z1, fill) { this.poly([this.P(px + xa, py + T, e + z1), this.P(px + xb, py + T, e + z1), this.P(px + xb, py + T, e + z0), this.P(px + xa, py + T, e + z0)], fill); };
+  P.wall = function (px, py, e, H, n, deco, now) {
     const x = this.x;
-    // 벽돌 줄
-    for (let k = 7; k < H; k += 7) { const a = this.P(px + T, py, e + k), b = this.P(px + T, py + T, e + k); x.fillStyle = '#3d3654'; x.fillRect(Math.min(a[0], b[0]), a[1], 1, 1); x.strokeStyle = '#3f3857'; x.lineWidth = 1; x.beginPath(); x.moveTo(a[0], a[1] + 0.5); x.lineTo(b[0], b[1] + 0.5); x.stroke(); }
-    if (torch) {
-      const q = this.P(px + T, py + 8, e + 18), f = Math.floor(now * 10 + px) % 2;
-      const gl = x.createRadialGradient(q[0], q[1], 1, q[0], q[1], 34);
-      gl.addColorStop(0, 'rgba(255,170,80,0.28)'); gl.addColorStop(1, 'rgba(255,170,80,0)');
-      x.fillStyle = gl; x.fillRect(q[0] - 34, q[1] - 34, 68, 68);
-      x.fillStyle = '#5b3a22'; x.fillRect(q[0] - 1, q[1], 2, 5);
-      x.fillStyle = '#ff9d3b'; x.fillRect(q[0] - 1, q[1] - 3 - f, 3, 3 + f);
-      x.fillStyle = '#ffe27a'; x.fillRect(q[0], q[1] - 2, 1, 2);
+    this.box(px, py, px + T, py + T, e, H, '#241f36', '#3a3352', '#463e60');
+    // 벽돌 줄눈
+    x.strokeStyle = 'rgba(20,16,32,0.55)'; x.lineWidth = 1;
+    for (let z = 6, k = 0; z < H; z += 6, k++) {
+      const a = this.P(px + T, py, e + z), b = this.P(px + T, py + T, e + z), c = this.P(px, py + T, e + z);
+      x.beginPath(); x.moveTo(a[0], a[1] + 0.5); x.lineTo(b[0], b[1] + 0.5); x.lineTo(c[0], c[1] + 0.5); x.stroke();
+      const off = k % 2 ? 4 : 10, v1 = this.P(px + T, py + off, e + z), v2 = this.P(px + T, py + off, e + z - 6);
+      x.beginPath(); x.moveTo(v1[0] + 0.5, v1[1]); x.lineTo(v2[0] + 0.5, v2[1]); x.stroke();
+      const w1 = this.P(px + off, py + T, e + z), w2 = this.P(px + off, py + T, e + z - 6);
+      x.beginPath(); x.moveTo(w1[0] + 0.5, w1[1]); x.lineTo(w2[0] + 0.5, w2[1]); x.stroke();
+    }
+    // 윗돌 테두리
+    { const A = this.P(px, py, e + H), B = this.P(px + T, py, e + H), C = this.P(px + T, py + T, e + H), D = this.P(px, py + T, e + H); x.strokeStyle = '#5a5178'; x.beginPath(); x.moveTo(D[0], D[1]); x.lineTo(C[0], C[1]); x.lineTo(B[0], B[1]); x.stroke(); }
+    if (n > 0.85) { const q = this.P(px + T, py + 5, e + 20); x.fillStyle = '#2f5a3a'; x.fillRect(q[0] - 1, q[1], 2, 3); x.fillRect(q[0], q[1] + 3, 1, 4); } // 이끼
+    if (deco === 'torch' || deco === 'torchL') {
+      const q = deco === 'torch' ? this.P(px + T, py + 8, e + 22) : this.P(px + 8, py + T, e + 22), f = Math.floor(now * 10 + px + py) % 2;
+      x.fillStyle = '#5b3a22'; x.fillRect(q[0] - 1, q[1], 2, 6);
+      x.fillStyle = '#ff9d3b'; x.fillRect(q[0] - 1, q[1] - 4 - f, 3, 4 + f);
+      x.fillStyle = '#ffe27a'; x.fillRect(q[0], q[1] - 3, 1, 2);
+      this.lights.push({ x: q[0], y: q[1], r: 85, c: 'rgba(255,150,60,0.17)', flick: true });
+    } else if (deco === 'window') {
+      // 좁은 아치 창 — 바깥 달빛
+      this.wallFaceR(px, py, e, 5, 11, 14, 30, '#0b0a1a');
+      this.wallFaceR(px, py, e, 6, 10, 15, 28, '#34427a');
+      const q = this.P(px + T, py + 8, e + 30); x.fillStyle = '#0b0a1a'; x.fillRect(q[0] - 1, q[1] - 2, 3, 2);
+      const m = this.P(px + T, py + 8, e + 22); this.lights.push({ x: m[0], y: m[1] + 10, r: 60, c: 'rgba(110,140,255,0.12)' });
+    } else if (deco === 'banner') {
+      this.wallFaceR(px, py, e, 3, 13, 8, 34, '#4a1f5e');
+      this.wallFaceR(px, py, e, 3, 13, 30, 33, '#c89a3a');
+      this.wallFaceR(px, py, e, 7, 9, 14, 24, '#c89a3a');
+    } else if (deco === 'bannerL') {
+      this.wallFaceL(px, py, e, 3, 13, 8, 34, '#4a1f5e');
+      this.wallFaceL(px, py, e, 3, 13, 30, 33, '#c89a3a');
+      this.wallFaceL(px, py, e, 7, 9, 14, 24, '#c89a3a');
+    } else if (deco === 'shelf') {
+      this.wallFaceL(px, py, e, 1, 15, 0, 30, '#4a2f18');
+      const books = ['#8e2f1f', '#2f5ad0', '#c89a3a', '#2d7f36', '#6b3fa0', '#b84a2a'];
+      for (let sh = 0; sh < 3; sh++) {
+        this.wallFaceL(px, py, e, 2, 14, 3 + sh * 9, 10 + sh * 9, '#1e140c');
+        for (let bk = 0; bk < 5; bk++) { const h = 4 + ((hash(px + bk, sh) * 3) | 0); this.wallFaceL(px, py, e, 2.5 + bk * 2.3, 4.2 + bk * 2.3, 3 + sh * 9, 3 + sh * 9 + h, books[(bk + sh * 2 + (px >> 4)) % books.length]); }
+      }
     }
   };
   P.barricade = function (x0, y0, x1, y1, e, first, last) {
@@ -394,6 +525,24 @@
 
   P.enemy = function (kind, p, en, now, e) {
     const x = this.x, q = this.P(p[0], p[1], e + p[2]), X = q[0], Y = q[1], hit = en[5];
+    if (en[7]) {
+      // 연습 표적: 바닥에 과녁 고리
+      const g0 = this.P(p[0], p[1], e); x.strokeStyle = 'rgba(255,226,122,0.7)'; x.lineWidth = 1;
+      x.beginPath(); x.ellipse(g0[0], g0[1], 10, 5, 0, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.ellipse(g0[0], g0[1], 5, 2.5, 0, 0, Math.PI * 2); x.stroke();
+    }
+    if (kind === 'crate') {
+      this.box(p[0] - 6, p[1] - 6, p[0] + 6, p[1] + 6, e, 12, hit ? '#ffffff' : '#c08a4a', '#8a5a2b', '#6b431f');
+      const a = this.P(p[0] - 6, p[1] + 6, e + 10), b = this.P(p[0] + 6, p[1] + 6, e + 2), c = this.P(p[0] - 6, p[1] + 6, e + 2), d = this.P(p[0] + 6, p[1] + 6, e + 10);
+      x.strokeStyle = '#e8d27a'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.moveTo(c[0], c[1]); x.lineTo(d[0], d[1]); x.stroke();
+      return;
+    }
+    if (kind === 'rune') {
+      this.box(p[0] - 4, p[1] - 4, p[0] + 4, p[1] + 4, e, 22, '#3a2a5a', '#22183a', '#2e2250');
+      const g = 0.6 + Math.sin(now * 4) * 0.3; const m = this.P(p[0] + 4, p[1], e + 14);
+      x.fillStyle = 'rgba(199,125,255,' + g.toFixed(2) + ')'; x.fillRect(m[0] - 1, m[1] - 6, 2, 9); x.fillRect(m[0] - 3, m[1] - 3, 6, 1);
+      this.lights.push({ x: m[0], y: m[1], r: 40, c: 'rgba(180,100,255,0.15)' });
+      return;
+    }
     if (kind === 'ant') {
       x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 5, Y - 7 + (Math.floor(now * 10 + en[0]) % 2));
     } else if (kind === 'fly') {
@@ -434,8 +583,8 @@
   };
   P.spiritDef = function (wx, wy, z, R, now) {
     const x = this.x, q = this.P(wx, wy, z), X = q[0], Y = q[1];
-    x.fillStyle = 'rgba(26,20,38,0.9)'; x.beginPath(); x.ellipse(X, Y, R + 1, R + 1, 0, 0, Math.PI * 2); x.fill();
-    x.fillStyle = 'rgba(122,90,58,0.92)'; x.beginPath(); x.ellipse(X, Y, R, R, 0, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = 'rgba(26,20,38,0.9)'; x.lineWidth = 2; x.beginPath(); x.ellipse(X, Y, R, R, 0, 0, Math.PI * 2); x.stroke();
+    x.fillStyle = 'rgba(122,90,58,0.5)'; x.beginPath(); x.ellipse(X, Y, R, R, 0, 0, Math.PI * 2); x.fill();
     x.strokeStyle = '#5fbf5a'; x.lineWidth = 1; x.beginPath(); x.ellipse(X, Y, R - 1, R - 1, 0, 0, Math.PI * 2); x.stroke();
     x.fillStyle = '#f4f0e0'; x.fillRect(X - 3, Y - 2, 2, 2); x.fillRect(X + 1, Y - 2, 2, 2);
     x.fillStyle = '#1a1426'; x.fillRect(X - 2, Y - 1, 1, 1); x.fillRect(X + 2, Y - 1, 1, 1);

@@ -28,6 +28,19 @@
     { id: 'sab', name: '마법사 달래기', desc: '사보타주 확률 -40%' },
     { id: 'heal', name: '응급 처치', desc: '체력 50 회복' },
   ];
+  // 몸 적응 훈련(튜토리얼) 과제 — 순서대로 목록에 보인다. role = 담당 역할(합동은 여러 명)
+  const TUT = [
+    { id: 'fb', roles: ['fb'], text: 'W/S로 앞뒤 걷기', how: 'W = 화면 오른쪽 위(계단 위쪽), S = 왼쪽 아래' },
+    { id: 'lr', roles: ['lr'], text: 'A/D로 옆으로 걷기', how: 'A = 화면 왼쪽 위, D = 오른쪽 아래' },
+    { id: 'jump', roles: ['jump'], text: 'Space로 점프', how: '스페이스를 한 번 눌러 보세요' },
+    { id: 'crouch', roles: ['crouch'], text: 'C로 앉기', how: 'C를 눌러 보세요 (달리면서 누르면 슬라이딩)' },
+    { id: 'lh', roles: ['lh'], text: '망치로 연습 상자 부수기', how: '마우스로 상자를 가리키고 좌클릭 (가까이 가야 닿아요)' },
+    { id: 'rh', roles: ['rh'], text: '마법으로 허수아비 개미 맞히기', how: '마우스로 개미를 가리키고 우클릭 (사거리가 짧아요)' },
+    { id: 'atk', roles: ['atk'], text: '불꽃 정령으로 날개 개미 인형 잡기', how: '마우스로 불꽃 정령을 인형 근처로 옮기면 자동 공격' },
+    { id: 'def', roles: ['def'], text: '땅 정령 방패로 침 막기', how: '보라색 룬석이 쏘는 침 앞에 마우스로 방패를 대세요' },
+    { id: 'diag', roles: ['fb', 'lr'], text: '[합동] 대각선 이동', how: '앞뒤 담당과 좌우 담당이 동시에 눌러요' },
+    { id: 'long', roles: ['jump', 'fb'], text: '[합동] 멀리뛰기', how: '달리면서(Shift) 점프 — 달리는 사람과 점프하는 사람이 타이밍을 맞춰요' },
+  ];
   const SAB_LINES = ['이 자식들아, 내 몸에서 나가!', '내 다리 내놔!', '누가 내 몸으로 장난치는 거야!', '으으… 조종권 반납해!'];
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -87,6 +100,17 @@
     this.blameWizard = 0;
     this.lastAct = {};
     this.result = null; this.shuffled = false; this.nomanaT = 0; this.swing = null;
+    // 몸 적응 훈련: 켜져 있으면 출발 지점에 연습 표적을 놓고, 다 끝낼 때까지 계단이 안 무너지고 다치지 않는다
+    this.tut = null;
+    if (this.opts.tutorial) {
+      this.tut = { on: true, done: {}, walk: { fb: 0, lr: 0 } };
+      this.col.on = false;
+      const tr = (k, x, y) => { const e = this.newEnemy(k, x, y, null); e.tr = true; e.hp = k === 'rune' ? 1e9 : 1; if (k === 'fly') { e.z = 20; e.shootT = 1e9; } return e; };
+      tr('crate', s.x - 64, s.y - 44);
+      tr('ant', s.x + 64, s.y - 44);
+      tr('fly', s.x + 8, s.y - 58);
+      const rn = tr('rune', s.x + 84, s.y + 12); rn.shootT = 2;
+    }
     this.roles = assignRoles(this.players.map(p => p.id));
     this.syncCounts();
   };
@@ -116,6 +140,19 @@
   };
   P.setInput = function (id, data) { if (this.inputs[id] !== undefined || this.players.some(p => p.id === id)) this.inputs[id] = data; };
   P.act = function (r) { this.lastAct[r] = this.time; };
+  P.tutDone = function (id) {
+    const t = this.tut;
+    if (!t || !t.on || t.done[id]) return;
+    t.done[id] = true;
+    this.emit('tutstep', { id });
+    if (TUT.every(q => t.done[q.id])) {
+      t.on = false;
+      this.enemies = this.enemies.filter(e => !e.tr);
+      this.eshots = [];
+      this.col.on = true; this.col.delay = 4; this.col.hinted = false;
+      this.emit('tutdone', {});
+    }
+  };
   P.emit = function (type, data) { this.events.push(Object.assign({ s: ++this.seq, t: this.time, type }, data || {})); };
   P.ownerName = function (r) { const p = this.players.find(p => p.id === this.roles[r]); return p ? p.name : '?'; };
 
@@ -147,6 +184,7 @@
   P.hurt = function (a, role, cause) {
     const b = this.body;
     if (b.inv > 0 || this.state !== 'play') return false;
+    if (this.tut && this.tut.on) return false; // 훈련 중엔 안 다친다
     this.hp -= a; b.inv = 0.8;
     let who;
     if (this.sab.phase === 'on') { this.blameWizard++; who = 'wizard'; }
@@ -190,6 +228,11 @@
     let mx = (lrI.k.d ? 1 : 0) - (lrI.k.a ? 1 : 0);
     if (my) this.act('fb');
     if (mx) this.act('lr');
+    if (this.tut && this.tut.on) {
+      const w = this.tut.walk;
+      if (my) { w.fb += dt; if (w.fb > 0.5) this.tutDone('fb'); }
+      if (mx) { w.lr += dt; if (w.lr > 0.5) this.tutDone('lr'); }
+    }
     const runY = !!fbI.k.sh && my !== 0, runX = !!lrI.k.sh && mx !== 0;
     if (this.sab.phase === 'on') { mx = -mx; my = -my; }
     if (b.inv > 0) b.inv -= dt;
@@ -200,7 +243,7 @@
     const jumpEdge = this.edge('jump', 'cj');
     const crouchEdge = this.edge('crouch', 'cc');
     const crouchHeld = !!cI.k.c;
-    if (crouchHeld || crouchEdge) this.act('crouch');
+    if (crouchHeld || crouchEdge) { this.act('crouch'); this.tutDone('crouch'); }
     if (jumpEdge) this.act('jump');
 
     // 슬라이딩 = 달리기 + 앉기
@@ -225,7 +268,7 @@
       b.vx = approach(b.vx, tvx, acc * dt); b.vy = approach(b.vy, tvy, acc * dt);
     }
     // 대각선 = 앞뒤 + 좌우 동시
-    if (mx && my && b.stun <= 0) { b.diagT += dt; if (b.diagT > 0.5 && !b.diagDone) { b.diagDone = true; this.combo('diag', ['fb', 'lr']); } }
+    if (mx && my && b.stun <= 0) { b.diagT += dt; if (b.diagT > 0.5 && !b.diagDone) { b.diagDone = true; this.combo('diag', ['fb', 'lr']); this.tutDone('diag'); } }
     else { b.diagT = 0; b.diagDone = false; }
 
     // 점프 (달리는 중이면 멀리뛰기)
@@ -234,8 +277,10 @@
       if (speedNow > WALK * 1.15 * st.spd) {
         b.vx *= 1.3; b.vy *= 1.3; b.longJ = true;
         this.combo('long', ['jump', runY ? 'fb' : 'lr']);
+        this.tutDone('long');
       }
       this.emit('jump', {});
+      this.tutDone('jump');
     }
     if (b.z > 0 || b.vz > 0) {
       b.vz -= GRAV * dt; b.z += b.vz * dt;
@@ -454,7 +499,7 @@
       this.act('lh');
       if (this.cool.lh <= 0) {
         this.cool.lh = 0.28;
-        const [dx, dy] = this.aim(this.inp('lh'), b.x, b.y - 8);
+        const [dx, dy] = this.aim(this.inp('lh'), b.x, b.y);
         const hx = b.x + dx * 14, hy = b.y + dy * 12;
         this.swing = { x: r1(hx), y: r1(hy), dx: r1(dx), dy: r1(dy), t: 0.15 };
         this.emit('swing', { x: r1(hx), y: r1(hy), dx: r1(dx), dy: r1(dy) });
@@ -481,7 +526,7 @@
         this.rollers = this.rollers.filter(o => !o.dead);
         for (const e of this.enemies) {
           const d = Math.hypot(e.x - hx, e.y - hy);
-          if (e.k === 'egg' && d < R + 6) this.damage(e, 1, 'lh');
+          if ((e.k === 'egg' || e.k === 'crate') && d < R + 6) this.damage(e, 1, 'lh');
           else if (e.k === 'ant' && d < R + 2) this.damage(e, 1 * this.stats.atk, 'lh');
           else if (e.k === 'queen' && d < R + 16) this.damage(e, 2 * this.stats.atk, 'lh');
         }
@@ -495,7 +540,7 @@
       if (this.cool.rh <= 0) {
         if (this.mana >= 6) {
           this.cool.rh = 0.28; this.mana -= 6;
-          const [dx, dy] = this.aim(rhI, b.x, b.y - 8);
+          const [dx, dy] = this.aim(rhI, b.x, b.y);
           this.shots.push({ k: 'rh', x: b.x + dx * 6, y: b.y + dy * 6, vx: dx * 230, vy: dy * 230, life: 0.42, id: this.nextId++ });
           this.emit('shoot', {});
         } else if (this.nomanaT <= 0) { this.nomanaT = 1; this.emit('nomana', {}); }
@@ -514,7 +559,7 @@
     if (dI.mx !== s.lastD) { s.lastD = dI.mx; this.act('def'); }
     if (this.cool.atk <= 0) {
       let best = null, bd = 100;
-      for (const e of this.enemies) if (e.k === 'fly') { const d = Math.hypot(e.x - s.ax, e.y - e.z - s.ay); if (d < bd) { bd = d; best = e; } }
+      for (const e of this.enemies) if (e.k === 'fly') { const d = Math.hypot(e.x - s.ax, e.y - e.z - s.ay); if (d < bd && (!e.tr || d < 30)) { bd = d; best = e; } } // 연습 인형은 정령을 가까이 대야 공격
       if (best && this.mana >= 4) {
         this.cool.atk = 0.5; this.mana -= 4;
         const dx = best.x - s.ax, dy = (best.y - best.z) - s.ay, d = Math.hypot(dx, dy) || 1;
@@ -530,10 +575,11 @@
     if (e.k === 'ant') { const b = this.body; const dx = e.x - b.x, dy = e.y - b.y, d = Math.hypot(dx, dy) || 1; e.hit = 0.15; e.kx = dx / d * 120; e.ky = dy / d * 120; }
     if (e.hp <= 0) {
       e.dead = true;
-      const xp = { ant: 3, fly: 4, egg: 1, queen: 0 }[e.k] || 0;
+      const xp = e.tr ? 1 : ({ ant: 3, fly: 4, egg: 1, queen: 0 }[e.k] || 0);
       this.xp += xp;
       const pid = this.roles[role];
-      if (this.pstats[pid]) { if (e.k === 'egg') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
+      if (this.pstats[pid]) { if (e.k === 'egg' || e.k === 'crate') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
+      if (e.tr) this.tutDone(e.k === 'crate' ? 'lh' : e.k === 'ant' ? 'rh' : 'atk');
       this.emit('kill', { k: e.k, x: r1(e.x), y: r1(e.y - e.z) });
       if (e.k === 'queen') this.finish('clear');
     }
@@ -569,6 +615,7 @@
         s.dead = true;
         const pid = this.roles.def; if (this.pstats[pid]) this.pstats[pid].blocks++;
         this.emit('block', { x: r1(s.x), y: r1(s.y) });
+        if (this.inp('def').mx != null) this.tutDone('def'); // 마우스로 직접 옮겨 막았을 때만 인정
         continue;
       }
       if (Math.hypot(s.x - b.x, s.y - (b.y - 6)) < 8 && b.z < 14) {
@@ -589,6 +636,14 @@
     const b = this.body;
     for (const e of this.enemies) {
       if (e.flash > 0) e.flash -= dt;
+      if (e.tr) {
+        // 연습 표적: 안 움직이고 안 문다. 룬석만 약한 침을 쏜다 (방패 연습용)
+        if (e.k === 'rune' && this.tut && this.tut.on && !this.tut.done.def) {
+          e.shootT -= dt;
+          if (e.shootT <= 0) { e.shootT = 2.2; const dx = b.x - e.x, dy = (b.y - 6) - (e.y - 12), d = Math.hypot(dx, dy) || 1; this.eshots.push({ x: e.x, y: e.y - 12, vx: dx / d * 50, vy: dy / d * 50, life: 5, id: this.nextId++ }); }
+        }
+        continue;
+      }
       if (e.k === 'ant') {
         const dx = b.x - e.x, dy = b.y - e.y, d = Math.hypot(dx, dy) || 1;
         if (e.hit > 0) { e.hit -= dt; const nx = e.x + e.kx * dt, ny = e.y + e.ky * dt; if (this.walkable(nx, e.y)) e.x = nx; if (this.walkable(e.x, ny)) e.y = ny; }
@@ -676,7 +731,7 @@
   // ---------- 사보타주 ----------
   P.stepSab = function (dt) {
     const s = this.sab;
-    if (!this.opts.sabotage) return;
+    if (!this.opts.sabotage || (this.tut && this.tut.on)) return;
     if (s.phase === 'idle') {
       s.next -= dt;
       if (s.next <= 0) {
@@ -688,6 +743,7 @@
   };
 
   P.stepHints = function () {
+    if (this.tut && this.tut.on) return; // 훈련 중엔 일반 힌트 미룸
     for (const h of this.level.hints) {
       if (!this.hintsDone[h.id] && h.y >= this.body.y - 150 && h.y <= this.body.y + 24) { this.hintsDone[h.id] = 1; this.emit('hint', { k: h.k }); }
     }
@@ -767,7 +823,7 @@
       b: [r1(b.x), r1(b.y), r1(b.z), b.crouch ? 1 : 0, b.slide > 0 ? 1 : 0, b.inv > 0 ? 1 : 0, r1(b.faceX), r1(b.vx)],
       hp: Math.ceil(this.hp), mhp: this.stats.mhp, mp: Math.floor(this.mana), lv: this.lv, xp: this.xp, xpn: this.xpNeed,
       sab: [this.sab.phase, this.sab.line, r1(this.sab.t)],
-      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0)]),
+      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0), e.tr ? 1 : 0]),
       sh: this.shots.map(x => [x.id, x.k, r1(x.x), r1(x.y)]),
       es: this.eshots.map(x => [x.id, r1(x.x), r1(x.y)]),
       sp: [r1(s.ax), r1(s.ay), r1(s.dx), r1(s.dy), r1(this.stats.defR)],
@@ -781,8 +837,9 @@
       vote: this.vote ? { id: this.vote.id, cards: this.vote.cards, t: r1(this.vote.t), votes: this.vote.votes } : null,
       boss: (() => { const q = this.enemies.find(e => e.k === 'queen'); return q ? [Math.max(0, Math.ceil(q.hp)), q.max] : null; })(),
       res: this.result,
+      tut: this.tut ? { on: this.tut.on, done: this.tut.done } : null,
     };
   };
 
-  G.TUS = { Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
+  G.TUS = { TUT, Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
 })(typeof window !== 'undefined' ? window : globalThis);

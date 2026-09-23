@@ -67,6 +67,21 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 #h-sab canvas{width:48px;height:41px;image-rendering:pixelated}
 #h-sab .l1{font-family:"Galmuri14",monospace;font-size:16px;color:#f1dcff}
 #h-sab .l2{font-size:11px;color:var(--purple);margin-top:4px}
+#h-tut{left:8px;top:74px;background:rgba(13,11,22,.86);border:2px solid var(--line);padding:6px 8px;width:min(270px,44%);font-size:11px;line-height:1.45}
+#h-tut .tt{color:var(--gold);font-size:12px;margin-bottom:4px;display:flex;justify-content:space-between}
+#h-tut .row{display:flex;gap:6px;align-items:baseline;color:var(--dim)}
+#h-tut .row .ck{width:12px;flex:none;color:#5c547a}
+#h-tut .row.done{color:#6f6890;text-decoration:line-through}
+#h-tut .row.done .ck{color:var(--green)}
+#h-tut .row.me:not(.done){color:var(--ink)}
+#h-tut .row .who{margin-left:auto;flex:none;color:#7f78a3;font-size:10px}
+#h-tut .row.me:not(.done) .who{color:var(--ice)}
+#h-task{left:50%;bottom:10px;transform:translateX(-50%);background:rgba(13,11,22,.92);border:2px solid var(--ice);padding:8px 14px;text-align:center;max-width:92%}
+#h-task .l1{font-family:"Galmuri14",monospace;font-size:15px;color:#fff}
+#h-task .l1 kbd{font-size:13px}
+#h-task .l2{font-size:11px;color:var(--ice);margin-top:3px}
+#h-task.wait{border-color:var(--line)}
+#h-task.wait .l1{font-size:13px;color:var(--dim)}
 #h-banner{left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;font-family:"Galmuri14",monospace;font-size:22px;color:var(--gold);text-shadow:2px 2px 0 #08070e}
 #h-banner small{display:block;font-family:"Galmuri11",monospace;font-size:12px;color:var(--ink);margin-top:4px}
 
@@ -134,6 +149,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     </div>
     <div class="or">혼자</div>
     <button class="btn" id="b-solo">혼자 연습 (모든 역할을 내가)</button>
+    <label class="opt"><input type="checkbox" id="t-tut" checked> 몸 적응 훈련(튜토리얼)부터 시작</label>
     <div class="err" id="t-err"></div>
     <p class="note">
       <b>조작</b> — 게임이 시작되면 각자 맡은 몸 부위만 움직일 수 있어요.<br>
@@ -152,6 +168,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     <div id="r-host-opts">
       <label class="opt"><input type="checkbox" id="o-sab" checked> 사보타주 (마법사가 가끔 조작을 뒤집음)</label>
       <label class="opt"><input type="checkbox" id="o-shuf" checked> 영혼 셔플 (첫 방을 깨면 역할이 섞임)</label>
+      <label class="opt"><input type="checkbox" id="o-tut" checked> 몸 적응 훈련부터 시작 (처음이면 꼭 켜기)</label>
       <button class="btn main" id="b-start">시작</button>
     </div>
     <p class="ms" id="r-wait" hidden style="margin-top:12px">방장이 시작하기를 기다리는 중…</p>
@@ -173,6 +190,8 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     <div class="hud" id="h-hint" hidden></div>
     <div class="hud" id="h-sab" hidden><canvas id="face" width="42" height="36"></canvas><div><div class="l1" id="sab-l1"></div><div class="l2" id="sab-l2"></div></div></div>
     <div class="hud" id="h-banner" hidden></div>
+    <div class="hud" id="h-tut" hidden></div>
+    <div class="hud" id="h-task" hidden></div>
     <div id="modal" hidden><div class="box" id="modal-box"></div></div>
   </div>
   <div id="team"></div>

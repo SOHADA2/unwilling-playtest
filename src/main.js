@@ -1,13 +1,13 @@
 // 화면 흐름 · 입력 · 네트워크 연결 · HUD
 (function () {
   'use strict';
-  const { Game, ROLE_INFO, ROLES, CARDS, SAB_LINES, DT, emptyInput, VW, VH } = window.TUS;
+  const { Game, ROLE_INFO, ROLES, CARDS, SAB_LINES, DT, emptyInput, VW, VH, TUT } = window.TUS;
   const $ = id => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
   const MODE = qs.has('local') ? 'local' : 'peer';
   const DEMO = qs.has('demo');
 
-  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true };
+  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true };
   let level = window.TUS_LEVEL.build();
   const rend = new window.TUS_RENDER($('cv'));
   const myIn = emptyInput();
@@ -73,7 +73,7 @@
   };
   $('code-in').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-join').click(); });
   $('b-leave').onclick = () => location.reload();
-  $('o-sab').onchange = $('o-shuf').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked }; pushLobby(); };
+  $('o-sab').onchange = $('o-shuf').onchange = $('o-tut').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked, tutorial: $('o-tut').checked }; pushLobby(); };
   $('b-start').onclick = () => {
     game = new Game(lobby, opts);
     game.inputs[myId] = myIn;
@@ -88,11 +88,11 @@
     }
     $('r-list').innerHTML = li.join('');
     $('r-host-opts').hidden = !isHost; $('r-wait').hidden = isHost;
-    if (!isHost) $('r-wait').textContent = `방장이 시작하기를 기다리는 중… (사보타주 ${opts.sabotage ? '켬' : '끔'} · 영혼 셔플 ${opts.shuffle ? '켬' : '끔'})`;
+    if (!isHost) $('r-wait').textContent = `방장이 시작하기를 기다리는 중… (훈련 ${opts.tutorial ? '켬' : '끔'} · 사보타주 ${opts.sabotage ? '켬' : '끔'} · 영혼 셔플 ${opts.shuffle ? '켬' : '끔'})`;
   }
   function startSolo() {
     isHost = true; myId = 'me';
-    game = new Game([{ id: 'me', name: myName() }], opts);
+    game = new Game([{ id: 'me', name: myName() }], Object.assign({}, opts, { tutorial: !DEMO && $('t-tut').checked }));
     game.inputs.me = myIn;
     if (DEMO) { if (!qs.has('intro')) game.state = 'play'; const ff = +qs.get('ff') || 0; for (let i = 0; i < ff * 60; i++) { if (bot) bot.drive(game, myIn, DT); game.step(); if (game.state === 'intro' && !qs.has('intro')) game.state = 'play'; } }
     show('play');
@@ -210,8 +210,36 @@
         case 'nomana': if (s.roles.rh === myId) toast('마나 부족!'); break;
         case 'sabwarn': break;
         case 'left': toast('한 명이 나갔어요. 역할을 다시 나눴어요.', 'wiz'); break;
+        case 'tutstep': { const q = TUT.find(q => q.id === ev.id); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
+        case 'tutdone': banner('훈련 끝!', '아래 계단이 곧 무너진다 — 바리케이드를 부수고 위로!', 3.5); SFX.vote(); break;
       }
     }
+  }
+
+  // ---------------- 튜토리얼 ----------------
+  const tutWho = (q, s) => [...new Set(q.roles.map(r => s.roles[r]))].map(id => id === myId ? '나' : nameOf(id)).join('+');
+  function tutHud(s) {
+    const t = s.tut, on = !!(t && t.on && s.st === 'play');
+    $('h-tut').hidden = !on; $('h-task').hidden = !on;
+    if (!on) return;
+    const key = JSON.stringify(t.done) + JSON.stringify(s.roles);
+    setIf('tut', key, () => {
+      const n = TUT.filter(q => t.done[q.id]).length;
+      $('h-tut').innerHTML = `<div class="tt"><span>몸 적응 훈련</span><span>${n}/${TUT.length}</span></div>` + TUT.map(q => {
+        const me = q.roles.some(r => s.roles[r] === myId);
+        return `<div class="row${t.done[q.id] ? ' done' : ''}${me ? ' me' : ''}"><span class="ck">${t.done[q.id] ? '✓' : '·'}</span><span>${esc(q.text)}</span><span class="who">${esc(tutWho(q, s))}</span></div>`;
+      }).join('');
+      // 내 할 일: 내가 맡은 과제 중 아직 안 한 첫 번째
+      const mine = TUT.find(q => !t.done[q.id] && q.roles.some(r => s.roles[r] === myId));
+      if (mine) {
+        $('h-task').className = 'hud';
+        $('h-task').innerHTML = `<div class="l1">내 할 일: ${esc(mine.text)}</div><div class="l2">${esc(mine.how)}</div>`;
+      } else {
+        const rest = TUT.filter(q => !t.done[q.id]).map(q => esc(tutWho(q, s)) + ': ' + esc(q.text)).slice(0, 2).join(' · ');
+        $('h-task').className = 'hud wait';
+        $('h-task').innerHTML = `<div class="l1">내 과제 끝! 친구들을 기다리는 중</div><div class="l2">${rest}</div>`;
+      }
+    });
   }
 
   // ---------------- HUD ----------------
@@ -250,6 +278,7 @@
       fit();
     });
     for (const el of $('team').querySelectorAll('.chip')) { const on = s.act[el.dataset.r] < 0.18; if (el.classList.contains('on') !== on) el.classList.toggle('on', on); }
+    tutHud(s);
     modal(s);
   }
 
@@ -259,7 +288,7 @@
       const mine = ROLES.filter(r => s.roles[r] === myId);
       key = s.st + JSON.stringify(s.roles) + Math.ceil(s.stT);
       const title = s.st === 'intro' ? '당신이 맡은 몸 부위' : '영혼 셔플! 역할이 바뀌었다';
-      const sub = s.st === 'intro' ? '마법사의 몸에 갇혔다. 이 부위만 움직일 수 있다.' : '방을 깼더니 영혼이 뒤섞였다. 새 부위에 적응하세요.';
+      const sub = s.st === 'intro' ? ('마법사의 몸에 갇혔다. 이 부위만 움직일 수 있다.' + (s.tut ? ' 곧 훈련장에서 하나씩 해볼 거예요.' : '')) : '방을 깼더니 영혼이 뒤섞였다. 새 부위에 적응하세요.';
       html = `<p class="mt">${title}</p><p class="ms">${sub}</p><div class="myroles">` +
         mine.map(r => `<div class="rolecard"><i class="eye"></i><div><div class="big">${ROLE_INFO[r].part} · ${ROLE_INFO[r].name}</div><div class="tip">${ROLE_INFO[r].tip}</div></div><kbd>${ROLE_INFO[r].keys}</kbd></div>`).join('') +
         `</div><div class="teamlist">` + s.players.filter(p => p.id !== myId).map(p => `<b>${esc(p.name)}</b>: ` + ROLES.filter(r => s.roles[r] === p.id).map(r => ROLE_INFO[r].part).join(', ')).join('<br>') +
@@ -320,7 +349,7 @@
     if (snap && playing()) {
       updateMouseWorld();
       handleEvents(snap);
-      rend.draw(level, snap, { smooth: !isHost });
+      rend.draw(level, snap, { smooth: !isHost, myId });
       hud(snap, dt);
     }
     sendInput(now);
