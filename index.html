@@ -82,6 +82,13 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 #h-task .l2{font-size:11px;color:var(--ice);margin-top:3px}
 #h-task.wait{border-color:var(--line)}
 #h-task.wait .l1{font-size:13px;color:var(--dim)}
+#h-sub{left:50%;bottom:14px;transform:translateX(-50%);width:92%;text-align:center;font-size:14px;color:#f1ecff;text-shadow:1px 1px 0 #000,0 0 6px #000;line-height:1.5}
+#h-skip{right:10px;top:8px;font-size:11px;color:var(--dim);background:rgba(13,11,22,.7);padding:3px 8px;border:1px solid var(--line)}
+#stage.cine .hud:not(#h-sub):not(#h-skip){display:none!important}
+#stage:not(.cine) #h-sub,#stage:not(.cine) #h-skip{display:none!important}
+.pinghelp{width:100%;text-align:center;font-size:11px;color:var(--dim);margin-top:2px}
+.pinghelp kbd{font-size:10px}
+.pc{border-left-width:5px}
 #h-banner{left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;font-family:"Galmuri14",monospace;font-size:22px;color:var(--gold);text-shadow:2px 2px 0 #08070e}
 #h-banner small{display:block;font-family:"Galmuri11",monospace;font-size:12px;color:var(--ink);margin-top:4px}
 
@@ -191,6 +198,8 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     <div class="hud" id="h-sab" hidden><canvas id="face" width="42" height="36"></canvas><div><div class="l1" id="sab-l1"></div><div class="l2" id="sab-l2"></div></div></div>
     <div class="hud" id="h-banner" hidden></div>
     <div class="hud" id="h-tut" hidden></div>
+    <div class="hud" id="h-sub"></div>
+    <div class="hud" id="h-skip">Enter 또는 클릭: 넘기기</div>
     <div class="hud" id="h-task" hidden></div>
     <div id="modal" hidden><div class="box" id="modal-box"></div></div>
   </div>

@@ -41,7 +41,15 @@
     { id: 'diag', roles: ['fb', 'lr'], text: '[합동] 대각선 이동', how: '앞뒤 담당과 좌우 담당이 동시에 눌러요' },
     { id: 'long', roles: ['jump', 'fb'], text: '[합동] 멀리뛰기', how: '달리면서(Shift) 점프 — 달리는 사람과 점프하는 사람이 타이밍을 맞춰요' },
   ];
-  const SAB_LINES = ['이 자식들아, 내 몸에서 나가!', '내 다리 내놔!', '누가 내 몸으로 장난치는 거야!', '으으… 조종권 반납해!'];
+  // 사보타주 종류 — 몸 주인(마법사)의 방해. 전부 "마법사 탓"으로 집계된다
+  const SAB_KIND = {
+    rev: { name: '조작 반전', dur: 3, lines: ['이 자식들아, 내 몸에서 나가!', '내 다리 내놔!', '누가 내 몸으로 장난치는 거야!'] },
+    hic: { name: '딸꾹질 — 멋대로 점프', dur: 3.5, lines: ['히끅! 몸이… 히끅!', '딸꾹! 이건 내 탓 아니… 히끅!'] },
+    swap: { name: '영혼 뒤바뀜 — 두 사람 역할이 잠깐 바뀜', dur: 5, lines: ['너희 둘, 자리 바꿔 봐라!', '헷갈려 봐라, 이 침입자들!'] },
+  };
+  const SAB_LINES = SAB_KIND.rev.lines;
+  const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
+  const PROLOGUE_LEN = 21;
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const approach = (v, t, d) => v < t ? Math.min(v + d, t) : Math.max(v - d, t);
@@ -62,10 +70,10 @@
     return owner;
   }
 
-  function emptyInput() { return { k: {}, mx: null, my: null, lb: 0, rb: 0, cj: 0, cc: 0, cl: 0, cr: 0, vk: 0, vi: -1 }; }
+  function emptyInput() { return { k: {}, mx: null, my: null, lb: 0, rb: 0, cj: 0, cc: 0, cl: 0, cr: 0, vk: 0, vi: -1, pg: 0, pk: 0, sk: 0 }; }
 
   function Game(players, opts) {
-    this.players = players.map(p => ({ id: p.id, name: p.name }));
+    this.players = players.map((p, i) => ({ id: p.id, name: p.name, col: i % 4 })); // col = 플레이어 색 번호
     this.opts = Object.assign({ sabotage: true, shuffle: true }, opts || {});
     this.inputs = {};
     this.players.forEach(p => this.inputs[p.id] = emptyInput());
@@ -77,7 +85,11 @@
   P.reset = function () {
     const lv = this.level = L.build();
     this.gen++;
-    this.time = 0; this.state = 'intro'; this.stateT = 8;
+    this.time = 0; const pro = this.opts.prologue && this.gen === 1; // 다시 하기 때는 프롤로그 생략
+    this.state = pro ? 'prologue' : 'intro'; this.stateT = pro ? PROLOGUE_LEN : 8;
+    this.pingCnt = {}; this.pingT = {}; this.skipCnt = {};
+    this.sabSwap = null; this.hicT = 0;
+    for (const p of this.players) { const I = this.inputs[p.id] || emptyInput(); this.pingCnt[p.id] = I.pg || 0; this.skipCnt[p.id] = I.sk || 0; }
     const s = lv.start;
     this.body = { x: s.x, y: s.y, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, inv: 0, slide: 0, landSlide: 0, longJ: false, crouch: false, faceX: 0, faceY: -1, diagT: 0, diagDone: false, safe: [], safeT: 0 };
     this.stats = { mhp: 100, atk: 1, spd: 1, regen: 16, defR: 10, sab: 1 };
@@ -91,7 +103,7 @@
     this.enemies = []; this.shots = []; this.eshots = []; this.nextId = 1;
     this.cool = { lh: 0, rh: 0, atk: 0 };
     this.spirit = { ax: s.x - 16, ay: s.y - 18, dx: s.x + 14, dy: s.y - 10, lastA: null, lastD: null };
-    this.sab = { phase: 'idle', t: 0, next: 28, line: 0 };
+    this.sab = { phase: 'idle', t: 0, next: 28, line: 0, kind: 'rev' };
     this.vote = null; this.voteSeq = 0; this.pick = {};
     this.events = []; this.seq = 0;
     this.hintsDone = {};
@@ -119,6 +131,7 @@
     // 나간 사람의 역할은 남은 사람에게 다시 나눈다
     this.players = this.players.filter(p => p.id !== id);
     if (!this.players.length) return;
+    this.sabSwap = null;
     this.roles = assignRoles(this.players.map(p => p.id));
     this.syncCounts();
     this.emit('left', { id });
@@ -198,6 +211,14 @@
   P.step = function () {
     const dt = DT;
     this.time += dt;
+    this.stepPings();
+    if (this.state === 'prologue') {
+      // 누구든 넘기기(Enter/클릭)를 누르면 넘어간다
+      for (const p of this.players) { const I = this.inputs[p.id]; if (I && I.sk > (this.skipCnt[p.id] || 0)) { this.stateT = 0; this.emit('skip', { pid: p.id }); } }
+      this.stateT -= dt;
+      if (this.stateT <= 0) { this.state = 'intro'; this.stateT = 8; }
+      this.pruneEvents(); return;
+    }
     if (this.state === 'intro' || this.state === 'shuffle') { this.stateT -= dt; if (this.stateT <= 0) this.state = 'play'; this.pruneEvents(); return; }
     if (this.state === 'vote') { this.stepVote(dt); this.pruneEvents(); return; }
     if (this.state === 'over' || this.state === 'clear') { this.pruneEvents(); return; }
@@ -219,6 +240,15 @@
     }
     this.pruneEvents();
   };
+  P.stepPings = function () {
+    for (const p of this.players) {
+      const I = this.inputs[p.id]; if (!I) continue;
+      if ((I.pg || 0) > (this.pingCnt[p.id] || 0)) {
+        this.pingCnt[p.id] = I.pg;
+        if (this.time - (this.pingT[p.id] || -9) > 0.6) { this.pingT[p.id] = this.time; this.emit('ping', { pid: p.id, k: Math.max(0, Math.min(3, I.pk | 0)) }); }
+      }
+    }
+  };
   P.pruneEvents = function () { const cut = this.time - 1.5; while (this.events.length && this.events[0].t < cut) this.events.shift(); };
 
   P.stepBody = function (dt) {
@@ -234,7 +264,7 @@
       if (mx) { w.lr += dt; if (w.lr > 0.5) this.tutDone('lr'); }
     }
     const runY = !!fbI.k.sh && my !== 0, runX = !!lrI.k.sh && mx !== 0;
-    if (this.sab.phase === 'on') { mx = -mx; my = -my; }
+    if (this.sab.phase === 'on' && this.sab.kind === 'rev') { mx = -mx; my = -my; }
     if (b.inv > 0) b.inv -= dt;
     if (b.stun > 0) b.stun -= dt;
     if (b.landSlide > 0) b.landSlide -= dt;
@@ -271,6 +301,11 @@
     if (mx && my && b.stun <= 0) { b.diagT += dt; if (b.diagT > 0.5 && !b.diagDone) { b.diagDone = true; this.combo('diag', ['fb', 'lr']); this.tutDone('diag'); } }
     else { b.diagT = 0; b.diagDone = false; }
 
+    // 딸꾹질 사보타주: 멋대로 튀어 오른다
+    if (this.sab.phase === 'on' && this.sab.kind === 'hic' && grounded) {
+      this.hicT -= dt;
+      if (this.hicT <= 0) { this.hicT = rnd(0.45, 0.9); b.vz = JUMPV * 0.75; this.emit('hic', {}); }
+    }
     // 점프 (달리는 중이면 멀리뛰기)
     if (jumpEdge && grounded && b.stun <= 0 && b.slide <= 0) {
       b.vz = JUMPV; b.crouch = false;
@@ -470,6 +505,7 @@
   };
 
   P.doShuffle = function () {
+    this.endSwap();
     const ids = this.players.map(p => p.id);
     let best = null, bs = -1;
     for (let i = 0; i < 16; i++) {
@@ -736,10 +772,32 @@
       s.next -= dt;
       if (s.next <= 0) {
         s.next = rnd(30, 55);
-        if (Math.random() < Math.min(0.95, 0.8 * this.stats.sab)) { s.phase = 'warn'; s.t = 1.2; s.line = Math.random() * SAB_LINES.length | 0; this.emit('sabwarn', { line: s.line }); }
+        if (Math.random() < Math.min(0.95, 0.8 * this.stats.sab)) {
+          const kinds = ['rev', 'hic'].concat(this.players.length >= 2 ? ['swap'] : []);
+          s.kind = kinds[Math.random() * kinds.length | 0];
+          s.phase = 'warn'; s.t = 1.2; s.line = Math.random() * SAB_KIND[s.kind].lines.length | 0;
+          this.emit('sabwarn', { line: s.line, kind: s.kind });
+        }
       }
-    } else if (s.phase === 'warn') { s.t -= dt; if (s.t <= 0) { s.phase = 'on'; s.t = 3.0; this.emit('sabon', {}); } }
-    else { s.t -= dt; if (s.t <= 0) { s.phase = 'idle'; this.emit('saboff', {}); } }
+    } else if (s.phase === 'warn') {
+      s.t -= dt;
+      if (s.t <= 0) {
+        s.phase = 'on'; s.t = SAB_KIND[s.kind].dur; this.hicT = 0.2;
+        if (s.kind === 'swap') {
+          const ids = shuffle(this.players.map(p => p.id)), a = ids[0], c = ids[1];
+          const orig = Object.assign({}, this.roles);
+          for (const r of ROLES) { if (this.roles[r] === a) this.roles[r] = c; else if (this.roles[r] === c) this.roles[r] = a; }
+          this.sabSwap = { orig, a, b: c }; this.syncCounts();
+          this.emit('sabswap', { a, b: c });
+        }
+        this.emit('sabon', { kind: s.kind });
+      }
+    }
+    else { s.t -= dt; if (s.t <= 0) { s.phase = 'idle'; this.endSwap(); this.emit('saboff', {}); } }
+  };
+  P.endSwap = function () {
+    if (!this.sabSwap) return;
+    this.roles = this.sabSwap.orig; this.sabSwap = null; this.syncCounts();
   };
 
   P.stepHints = function () {
@@ -822,7 +880,7 @@
       ro: this.rollers.map(o => [o.id, o.k, r1(o.x), r1(o.y), r1(o.rot), o.k === 'log' ? r1(o.x0) : 0, o.k === 'log' ? r1(o.x1) : 0]),
       b: [r1(b.x), r1(b.y), r1(b.z), b.crouch ? 1 : 0, b.slide > 0 ? 1 : 0, b.inv > 0 ? 1 : 0, r1(b.faceX), r1(b.vx)],
       hp: Math.ceil(this.hp), mhp: this.stats.mhp, mp: Math.floor(this.mana), lv: this.lv, xp: this.xp, xpn: this.xpNeed,
-      sab: [this.sab.phase, this.sab.line, r1(this.sab.t)],
+      sab: [this.sab.phase, this.sab.line, r1(this.sab.t), this.sab.kind || 'rev'],
       e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0), e.tr ? 1 : 0]),
       sh: this.shots.map(x => [x.id, x.k, r1(x.x), r1(x.y)]),
       es: this.eshots.map(x => [x.id, r1(x.x), r1(x.y)]),
@@ -841,5 +899,5 @@
     };
   };
 
-  G.TUS = { TUT, Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
+  G.TUS = { SAB_KIND, PINGS, PROLOGUE_LEN, TUT, Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
 })(typeof window !== 'undefined' ? window : globalThis);

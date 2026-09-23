@@ -4,6 +4,8 @@
 (function (G) {
   'use strict';
   const T = 16, VW = 416, VH = 234;
+  const PCOL = ['#ff7a7a', '#6db8ff', '#7be08a', '#ffd257']; // 플레이어 색 (main.js 와 같게)
+  const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
 
   const PAL = {
     K: '#1a1426', H: '#3565d8', h: '#2447a8', Y: '#f6c945', S: '#f4c9a3', R: '#3553c4', r: '#243a92', M: '#8fc0ff', B: '#5b3a22',
@@ -58,7 +60,7 @@
       ant: sprite(ANT, PAL), antHit: sprite(ANT, Object.assign({}, PAL, { a: '#ffffff', A: '#ffe0e0' })),
     };
     this.gen = -1; this.fx = []; this.pops = []; this.shake = 0; this.flash = 0;
-    this.disp = new Map(); this.lastT = 0;
+    this.disp = new Map(); this.lastT = 0; this.bubbles = [];
     this.camX = null; this.camY = 0; this.ox = 0; this.oy = 0; this.lastCol = null; this.faceL = false; this.prevBX = null;
   }
   const P = Renderer.prototype;
@@ -101,6 +103,8 @@
       case 'fall': add(ev.x, ev.y, 8, '#cdb8ff', 25, 0.5, false, 4); break;
       case 'rollfall': add(ev.x, ev.y, 6, '#8a5a2b', 30, 0.5, true, 4); break;
       case 'collapse': this.shake = 3; break;
+      case 'ping': { const pl = s && s.players.find(p => p.id === ev.pid); if (pl) { this.bubbles = this.bubbles.filter(b => b.pid !== ev.pid); this.bubbles.push({ pid: ev.pid, text: pl.name + ': ' + PINGS[ev.k], col: PCOL[pl.col || 0], t: 1.8 }); } break; }
+      case 'hic': this.shake = Math.max(this.shake, 1.5); break;
     }
   };
 
@@ -109,6 +113,7 @@
     this.lv = lv;
     const x = this.x, now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
     const dt = Math.min(0.05, this.lastT ? now - this.lastT : 0.016); this.lastT = now;
+    if (s.st === 'prologue') { this.prologue(s, now); return; }
     this.smooth = !!opt.smooth;
     const k = Math.min(1, dt * 16);
     if (s.gen !== this.gen) { this.gen = s.gen; this.disp.clear(); this.fx = []; this.pops = []; this.camX = null; }
@@ -237,7 +242,9 @@
     x.fillStyle = 'rgba(230,220,255,0.55)';
     for (const m of this.motes) { m.x = (m.x + m.vx * dt + VW) % VW; m.y = (m.y + m.vy * dt + VH) % VH; x.fillRect(Math.round(m.x), Math.round(m.y), 1, 1); }
     this.lighting(s, now);
+    this.pressEyes(s, bp, be, now);
     this.guides(s, bp, be, now, opt);
+    this.drawBubbles(bp, be, dt);
     // 글자 팝업
     this.pops = this.pops.filter(p => (p.t -= dt) > 0);
     x.textAlign = 'center';
@@ -282,6 +289,149 @@
       x.fillStyle = g; x.fillRect(l.x - r, l.y - r, r * 2, r * 2);
     }
     x.globalCompositeOperation = 'source-over';
+  };
+
+  // 누가 눌렀나: 해당 몸 부위에 그 사람 색 눈이 번쩍 (기획서 "눈 달린 부위" UI)
+  P.pressEyes = function (s, bp, be, now) {
+    const x = this.x, q = this.P(bp[0], bp[1], be + bp[2]), X = q[0], Y = q[1];
+    const col = r => { const pl = s.players.find(p => p.id === s.roles[r]); return PCOL[pl ? pl.col || 0 : 0]; };
+    const spots = { fb: [4, -1], lr: [-4, -1], jump: [6, -7], crouch: [-6, -8], lh: [-12, -12], rh: [11, -13] };
+    for (const r in spots) {
+      const age = s.act[r]; if (!(age < 0.35)) continue;
+      const [dx, dy] = spots[r], ex = X + dx, ey = Y + dy - (s.b[3] ? -4 : 0);
+      x.globalAlpha = 1 - age / 0.35;
+      x.fillStyle = col(r); x.fillRect(ex - 4, ey - 3, 8, 6);
+      x.fillStyle = '#ffffff'; x.fillRect(ex - 3, ey - 2, 6, 4);
+      x.fillStyle = '#1a1426'; x.fillRect(ex - 1, ey - 1, 2, 2);
+      x.globalAlpha = 1;
+    }
+    // 정령에는 조종하는 사람 색 점
+    const sp = s.sp, a = this.disp.get('spa') || [sp[0], sp[1]], d = this.disp.get('spd') || [sp[2], sp[3]];
+    const qa = this.P(a[0], a[1], this.hAt(a[1]) + 18), qd = this.P(d[0], d[1], this.hAt(d[1]) + 8);
+    x.fillStyle = col('atk'); x.fillRect(qa[0] - 1, qa[1] - 10, 3, 3);
+    x.fillStyle = col('def'); x.fillRect(qd[0] - 1, qd[1] - sp[4] - 5, 3, 3);
+  };
+  P.drawBubbles = function (bp, be, dt) {
+    const x = this.x; this.bubbles = this.bubbles.filter(b => (b.t -= dt) > 0);
+    const q = this.P(bp[0], bp[1], be + bp[2] + 30);
+    x.font = '11px "Galmuri11", "Galmuri9", monospace'; x.textAlign = 'center';
+    this.bubbles.forEach((b, i) => {
+      const w = x.measureText(b.text).width + 10, yy = q[1] - i * 16 - 6;
+      x.globalAlpha = Math.min(1, b.t * 3);
+      x.fillStyle = '#1a1426'; x.fillRect(q[0] - w / 2 - 1, yy - 11, w + 2, 15);
+      x.fillStyle = '#f4f0e0'; x.fillRect(q[0] - w / 2, yy - 10, w, 13);
+      x.fillStyle = b.col; x.fillRect(q[0] - w / 2, yy - 10, 3, 13);
+      x.fillStyle = '#1a1426'; x.fillText(b.text, q[0] + 1, yy);
+      x.globalAlpha = 1;
+    });
+  };
+
+  // ---------- 프롤로그 컷신 (기획서 3.2) ----------
+  // 1 마법진 그리기 → 2 개미가 가루를 훔쳐 감 → 3 영창 → 4 현실에서 투닥이던 친구들이 손에 끌려감 → 5 조용한 실패, 영혼이 마법사 몸으로 → 6 제목
+  P.prologue = function (s, now) {
+    const x = this.x, t = 21 - s.stT, W = VW, H = VH;
+    const pls = s.players.length ? s.players : [{ name: '?', col: 0 }];
+    const wiz = (cx, cy, sc, eyes) => {
+      x.drawImage(this.spr.wiz, Math.round(cx - 7 * sc), Math.round(cy - 20 * sc), 14 * sc, 20 * sc);
+      x.fillStyle = '#a9aec0'; x.fillRect(Math.round(cx + 8 * sc), Math.round(cy - 17 * sc), sc, 17 * sc);
+      x.fillStyle = '#1a1426'; x.fillRect(Math.round(cx + 6.5 * sc), Math.round(cy - 21 * sc), 4 * sc, 4 * sc);
+      x.fillStyle = '#e04a4a'; x.fillRect(Math.round(cx + 7 * sc), Math.round(cy - 20.5 * sc), 3 * sc, 3 * sc);
+      x.fillStyle = '#ffffff'; x.fillRect(Math.round(cx + 8 * sc), Math.round(cy - 19.5 * sc), sc, sc);
+      if (eyes) { x.fillStyle = eyes; x.fillRect(Math.round(cx - 3 * sc), Math.round(cy - 10 * sc), sc, sc); x.fillRect(Math.round(cx + 1 * sc), Math.round(cy - 10 * sc), sc, sc); }
+    };
+    const dungeon = () => {
+      const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#120e22'); g.addColorStop(1, '#07060d'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+      x.fillStyle = '#1c1730'; for (let i = 0; i < 9; i++) for (let j = 0; j < 4; j++) x.fillRect(i * 48 + (j % 2) * 24, j * 22 + 10, 44, 18);
+      x.fillStyle = '#231d36'; x.fillRect(0, 150, W, H - 150);
+    };
+    const light = (cx, cy, r, c) => { const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,0)'); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2); x.globalCompositeOperation = 'source-over'; };
+    const circle = (cx, cy, rx, ry, a0, a1, col, lw) => { x.strokeStyle = col; x.lineWidth = lw || 1; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, a0, a1); x.stroke(); };
+    const ant = (ax, ay, sc, spark) => { x.drawImage(this.spr.ant, Math.round(ax), Math.round(ay), 10 * sc, 7 * sc); if (spark) { x.fillStyle = '#e6d6ff'; x.fillRect(Math.round(ax + 3 * sc), Math.round(ay - 2 * sc), 2 * sc, 2 * sc); } };
+    const person = (px, py, col, lift) => {
+      py -= lift;
+      x.fillStyle = '#1a1426'; x.fillRect(px - 5, py - 20, 10, 20);
+      x.fillStyle = '#3a2a22'; x.fillRect(px - 4, py - 19, 8, 3);
+      x.fillStyle = '#f4c9a3'; x.fillRect(px - 4, py - 16, 8, 5);
+      x.fillStyle = col; x.fillRect(px - 4, py - 11, 8, 6);
+      x.fillStyle = '#2a2a3a'; x.fillRect(px - 4, py - 5, 3, 5); x.fillRect(px + 1, py - 5, 3, 5);
+    };
+    // 위에서 내려와 머리를 움켜쥐는 보라색 손 (hy = 손가락 끝)
+    const hand = (hx, hy) => {
+      x.fillStyle = 'rgba(150,90,230,0.8)'; x.fillRect(hx - 5, 0, 10, hy - 12);
+      x.fillStyle = 'rgba(150,90,230,0.92)'; x.fillRect(hx - 9, hy - 14, 18, 9);
+      for (let i = 0; i < 4; i++) x.fillRect(hx - 9 + i * 5, hy - 5, 3, 6);
+      x.fillStyle = 'rgba(220,190,255,0.9)'; x.fillRect(hx - 3, 0, 1, hy - 12);
+    };
+    const bubble = (bx, by, text) => { x.font = '11px "Galmuri11", monospace'; x.textAlign = 'center'; const w = x.measureText(text).width + 10; x.fillStyle = '#f4f0e0'; x.fillRect(bx - w / 2, by - 12, w, 15); x.fillStyle = '#1a1426'; x.fillText(text, bx, by); };
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    if (t < 4.5) {
+      dungeon();
+      const k = Math.min(1, t / 3.6);
+      circle(250, 175, 90, 26, 0, Math.PI * 2 * k, 'rgba(205,184,255,0.8)', 1.5);
+      circle(250, 175, 60, 17, 0, Math.PI * 2 * Math.max(0, k * 1.2 - 0.2), 'rgba(205,184,255,0.6)', 1);
+      wiz(150, 170, 3);
+      for (let i = 0; i < 10; i++) { const a = now * 3 + i; x.fillStyle = 'rgba(230,214,255,' + (0.4 + (i % 3) * 0.2) + ')'; x.fillRect(172 + ((a * 17) % 60), 130 + ((a * 23) % 50), 1, 1); }
+      light(150, 120, 90, 'rgba(120,150,255,0.15)'); light(250, 175, 110, 'rgba(170,110,255,0.12)');
+    } else if (t < 8.5) {
+      const k = (t - 4.5) / 4;
+      x.fillStyle = '#0c0a16'; x.fillRect(0, 0, W, H);
+      x.fillStyle = '#1a1528'; for (let i = 0; i < 14; i++) x.fillRect(i * 32, 0, 1, H);
+      const gap = 0.3 + k * 0.9;
+      circle(208, 120, 170, 62, gap, Math.PI * 2, 'rgba(205,184,255,0.85)', 3);
+      circle(208, 120, 118, 42, gap * 0.8, Math.PI * 2, 'rgba(205,184,255,0.6)', 2);
+      for (let i = 0; i < 7; i++) { const p = ((k * 1.6 + i / 7) % 1); ant(330 + p * 140 - i * 4, 150 + Math.sin(i * 2) * 18 + p * 30, 2, true); }
+      light(208, 120, 200, 'rgba(170,110,255,0.10)');
+    } else if (t < 11.5) {
+      dungeon();
+      const pulse = 0.6 + Math.sin(now * 8) * 0.3;
+      circle(250, 175, 90, 26, 0.9, Math.PI * 2, 'rgba(220,160,255,' + pulse.toFixed(2) + ')', 2);
+      circle(250, 175, 90, 26, 0.2, 0.9, Math.floor(now * 10) % 2 ? 'rgba(255,80,80,0.9)' : 'rgba(0,0,0,0)', 2);
+      wiz(150, 170, 3);
+      bubble(160, 88, '오너라… 전설의 용사여!');
+      light(250, 175, 140, 'rgba(180,110,255,' + (0.12 + pulse * 0.08).toFixed(2) + ')');
+    } else if (t < 15.5) {
+      // 현실 세계: 따뜻한 방
+      x.fillStyle = '#2a2230'; x.fillRect(0, 0, W, H);
+      x.fillStyle = '#3a3040'; x.fillRect(0, 150, W, H);
+      x.fillStyle = '#5a4030'; x.fillRect(120, 140, 180, 12); x.fillStyle = '#3a2a20'; x.fillRect(130, 152, 6, 30); x.fillRect(284, 152, 6, 30);
+      x.fillStyle = '#6fa0d0'; x.fillRect(180, 118, 40, 22); x.fillStyle = '#1a1426'; x.fillRect(196, 140, 8, 3);
+      light(200, 60, 180, 'rgba(255,190,120,0.12)');
+      const lift = t > 13.2 ? (t - 13.2) * 60 : 0;
+      const lines = ['니가 해!', '아 왜 나야', '너 때문이잖아', '조용히 해!'];
+      pls.forEach((pl, i) => {
+        const px = pls.length === 1 ? 210 : 130 + i * (160 / (pls.length - 1)), py = 206;
+        person(px, py, PCOL[pl.col || 0], lift);
+        x.font = '10px "Galmuri11", monospace'; x.textAlign = 'center'; x.fillStyle = PCOL[pl.col || 0]; x.fillText(pl.name, px, py - lift - 24);
+        if (t < 13.2 && Math.floor(t * 1.5 + i) % 2 === 0) bubble(px, py - 34, lines[i % 4]);
+        if (t > 12.6) hand(px, py - lift - 22 - Math.max(0, (13.2 - t) * 90));
+      });
+      if (t > 12.6) { const g = x.createRadialGradient(W / 2, -20, 10, W / 2, -20, 160); g.addColorStop(0, 'rgba(170,110,255,0.8)'); g.addColorStop(1, 'rgba(170,110,255,0)'); x.fillStyle = g; x.fillRect(0, 0, W, 140); }
+    } else if (t < 18.5) {
+      dungeon();
+      const k = (t - 15.5) / 3;
+      circle(208, 175, 90, 26, 0, Math.PI * 2, 'rgba(90,80,110,0.6)', 1.5);
+      const lastCol = PCOL[pls[Math.min(pls.length - 1, Math.floor(k * pls.length))].col || 0];
+      wiz(208, 172, 3, k > 0.85 ? lastCol : null);
+      pls.forEach((pl, i) => {
+        const a = i / pls.length * Math.PI * 2 + k * 5, r = Math.max(0, 120 * (1 - k * 1.15));
+        const wx = 208 + Math.cos(a) * r, wy = 130 + Math.sin(a) * r * 0.5;
+        if (r <= 0) return;
+        x.fillStyle = PCOL[pl.col || 0]; x.fillRect(Math.round(wx) - 3, Math.round(wy) - 3, 6, 6);
+        x.fillStyle = '#ffffff'; x.fillRect(Math.round(wx) - 1, Math.round(wy) - 1, 2, 2);
+        x.font = '10px "Galmuri11", monospace'; x.textAlign = 'center'; x.fillStyle = PCOL[pl.col || 0]; x.fillText(pl.name, wx, wy - 7);
+        light(wx, wy, 26, 'rgba(255,255,255,0.18)');
+      });
+      if (t < 16) { x.fillStyle = 'rgba(255,255,255,' + (1 - (t - 15.5) * 2).toFixed(2) + ')'; x.fillRect(0, 0, W, H); }
+      light(208, 130, 120, 'rgba(120,150,255,0.12)');
+    } else {
+      x.fillStyle = '#07060d'; x.fillRect(0, 0, W, H);
+      const a = Math.min(1, (t - 18.5) * 2);
+      x.globalAlpha = a; x.textAlign = 'center';
+      x.font = '26px "Galmuri14", "Galmuri11", monospace'; x.fillStyle = '#ece8ff'; x.fillText('소환되고 싶지 않아', W / 2, 104);
+      x.font = '16px "Galmuri11", monospace'; x.fillStyle = '#c77dff'; x.fillText('(니들이랑)', W / 2, 128);
+      x.font = '10px "Galmuri11", monospace'; x.fillStyle = '#a39bc4'; x.fillText('THE UNWILLING SUMMONED', W / 2, 150);
+      x.globalAlpha = 1;
+    }
   };
 
   // 튜토리얼 안내: 내 담당 표적 위 화살표 + 이동 방향 나침반

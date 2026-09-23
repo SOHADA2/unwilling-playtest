@@ -1,13 +1,14 @@
 // 화면 흐름 · 입력 · 네트워크 연결 · HUD
 (function () {
   'use strict';
-  const { Game, ROLE_INFO, ROLES, CARDS, SAB_LINES, DT, emptyInput, VW, VH, TUT } = window.TUS;
+  const { Game, ROLE_INFO, ROLES, CARDS, SAB_KIND, PINGS, PROLOGUE_LEN, DT, emptyInput, VW, VH, TUT } = window.TUS;
+  const PCOL = ['#ff7a7a', '#6db8ff', '#7be08a', '#ffd257']; // 플레이어 색 (render.js 와 같게)
   const $ = id => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
   const MODE = qs.has('local') ? 'local' : 'peer';
   const DEMO = qs.has('demo');
 
-  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true };
+  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true, prologue: true };
   let level = window.TUS_LEVEL.build();
   const rend = new window.TUS_RENDER($('cv'));
   const myIn = emptyInput();
@@ -73,7 +74,7 @@
   };
   $('code-in').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-join').click(); });
   $('b-leave').onclick = () => location.reload();
-  $('o-sab').onchange = $('o-shuf').onchange = $('o-tut').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked, tutorial: $('o-tut').checked }; pushLobby(); };
+  $('o-sab').onchange = $('o-shuf').onchange = $('o-tut').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked, tutorial: $('o-tut').checked, prologue: true }; pushLobby(); };
   $('b-start').onclick = () => {
     game = new Game(lobby, opts);
     game.inputs[myId] = myIn;
@@ -84,7 +85,7 @@
     const li = [];
     for (let i = 0; i < 4; i++) {
       const p = lobby[i];
-      li.push(p ? `<li><span>${esc(p.name)}${p.id === myId ? ' (나)' : ''}</span><span style="color:var(--dim)">${p.id === 'host' ? '방장' : '참가'}</span></li>` : '<li class="empty">빈자리</li>');
+      li.push(p ? `<li style="border-left:5px solid ${PCOL[i % 4]}"><span>${esc(p.name)}${p.id === myId ? ' (나)' : ''}</span><span style="color:var(--dim)">${p.id === 'host' ? '방장' : '참가'}</span></li>` : '<li class="empty">빈자리</li>');
     }
     $('r-list').innerHTML = li.join('');
     $('r-host-opts').hidden = !isHost; $('r-wait').hidden = isHost;
@@ -92,7 +93,7 @@
   }
   function startSolo() {
     isHost = true; myId = 'me';
-    game = new Game([{ id: 'me', name: myName() }], Object.assign({}, opts, { tutorial: !DEMO && $('t-tut').checked }));
+    game = new Game([{ id: 'me', name: myName() }], Object.assign({}, opts, { tutorial: !DEMO && $('t-tut').checked, prologue: !DEMO }));
     game.inputs.me = myIn;
     if (DEMO) { if (!qs.has('intro')) game.state = 'play'; const ff = +qs.get('ff') || 0; for (let i = 0; i < ff * 60; i++) { if (bot) bot.drive(game, myIn, DT); game.step(); if (game.state === 'intro' && !qs.has('intro')) game.state = 'play'; } }
     show('play');
@@ -106,6 +107,9 @@
   addEventListener('keydown', e => {
     if (e.code === 'KeyM' && document.activeElement.tagName !== 'INPUT') { toggleMute(); return; }
     if (!playing()) return;
+    const pk = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Numpad1: 0, Numpad2: 1, Numpad3: 2, Numpad4: 3 }[e.code];
+    if (pk != null && !e.repeat) { myIn.pk = pk; myIn.pg++; dirty = true; return; }
+    if ((e.code === 'Enter' || e.code === 'Escape') && snap && snap.st === 'prologue') { myIn.sk++; dirty = true; return; }
     const k = KEYMAP[e.code]; if (!k) return;
     e.preventDefault();
     if (!myIn.k[k]) { myIn.k = Object.assign({}, myIn.k, { [k]: true }); if (k === 'sp') myIn.cj++; if (k === 'c') myIn.cc++; dirty = true; }
@@ -117,6 +121,7 @@
   cv.addEventListener('contextmenu', e => e.preventDefault());
   addEventListener('mousedown', e => {
     if (!playing() || e.target.closest('#modal') || e.target.id === 'mute') return;
+    if (snap && snap.st === 'prologue') { myIn.sk++; dirty = true; audioOn(); return; }
     if (e.button === 0) { myIn.lb = 1; myIn.cl++; }
     if (e.button === 2) { myIn.rb = 1; myIn.cr++; }
     dirty = true; audioOn();
@@ -149,7 +154,35 @@
   // ---------------- 소리 ----------------
   let AC = null, muted = false;
   try { muted = localStorage.getItem('tus-mute') === '1'; } catch (e) { }
-  function audioOn() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (AC && AC.state === 'suspended') AC.resume(); }
+  function audioOn() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (AC && AC.state === 'suspended') AC.resume(); music.start(); }
+  // 배경음악: 낮게 깔리는 울림 + 드문드문 단조 아르페지오 (보스전은 빠르고 베이스가 뛴다)
+  const music = (() => {
+    let on = false, cur = 'calm', gain = null, next = 0, step = 0;
+    const SCALE = [220, 261.6, 293.7, 329.6, 392, 440, 523.3];
+    function start() {
+      if (on || !AC) return; on = true;
+      gain = AC.createGain(); gain.gain.value = muted ? 0 : 0.05; gain.connect(AC.destination);
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240; lp.connect(gain);
+      for (const f of [55, 55.35, 82.4]) { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; const g = AC.createGain(); g.gain.value = f > 80 ? 0.12 : 0.28; o.connect(g); g.connect(lp); o.start(); }
+      next = AC.currentTime + 0.1;
+      setInterval(tick, 90);
+    }
+    function note(f, t, dur, type, vol) { const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(gain); o.start(t); o.stop(t + dur + 0.05); }
+    function tick() {
+      if (!gain) return;
+      gain.gain.value = muted ? 0 : (cur === 'boss' ? 0.07 : 0.05);
+      const spb = cur === 'boss' ? 0.2 : cur === 'eerie' ? 0.7 : 0.42;
+      while (next < AC.currentTime + 0.3) {
+        step++;
+        const chance = cur === 'boss' ? 0.85 : cur === 'eerie' ? 0.35 : cur === 'calm' ? 0.4 : 0.6;
+        if (Math.random() < chance) note(SCALE[(Math.random() * SCALE.length) | 0] * (Math.random() < 0.3 ? 2 : 1), next, spb * 1.6, cur === 'boss' ? 'square' : 'triangle', cur === 'boss' ? 0.25 : 0.35);
+        if (cur === 'boss' && step % 2 === 0) note(step % 8 < 4 ? 55 : 65.4, next, 0.18, 'square', 0.5);
+        if (cur === 'tower' && step % 8 === 0) note(110, next, 0.9, 'sine', 0.5);
+        next += spb;
+      }
+    }
+    return { start, mode: m => { cur = m; } };
+  })();
   function toggleMute() { muted = !muted; try { localStorage.setItem('tus-mute', muted ? '1' : '0'); } catch (e) { } $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)'; }
   $('mute').onclick = toggleMute; $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)';
   function beep(f0, f1, dur, type, vol) {
@@ -210,6 +243,8 @@
         case 'nomana': if (s.roles.rh === myId) toast('마나 부족!'); break;
         case 'sabwarn': break;
         case 'left': toast('한 명이 나갔어요. 역할을 다시 나눴어요.', 'wiz'); break;
+        case 'sabswap': toast(`영혼 뒤바뀜! ${nameOf(ev.a)} ↔ ${nameOf(ev.b)} 역할이 잠깐 바뀜`, 'wiz'); break;
+        case 'ping': beep(ev.k === 2 ? 300 : 700, ev.k === 2 ? 200 : 900, 0.08, 'square', 0.04); break;
         case 'tutstep': { const q = TUT.find(q => q.id === ev.id); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
         case 'tutdone': banner('훈련 끝!', '아래 계단이 곧 무너진다 — 바리케이드를 부수고 위로!', 3.5); SFX.vote(); break;
       }
@@ -246,7 +281,21 @@
   const cache = {};
   function setIf(key, val, fn) { if (cache[key] !== val) { cache[key] = val; fn(val); } }
   rend.face($('face'));
+  function subtitle(s) {
+    const cine = s.st === 'prologue';
+    $('stage').classList.toggle('cine', cine); $('team').style.visibility = cine ? 'hidden' : '';
+    if (!cine) return;
+    const t = PROLOGUE_LEN - s.stT, names = s.players.map(p => p.name).join(', ');
+    const line = t < 4.5 ? '어둡고 음침한 마탑 지하 3층. 한 마법사가 소환 마법진을 그리고 있었다.'
+      : t < 8.5 ? '…그런데 개미들이 마법진의 가루를 열심히 날라 가고 있었다.'
+      : t < 11.5 ? '마법진이 지워진 줄도 모르고, 마법사는 영창을 시작했다.'
+      : t < 15.5 ? `같은 시각, 현실 세계. 투닥거리던 ${names} 앞에 — 손이 뻗어 왔다.`
+      : t < 18.5 ? '소환은… 조용했다. 그리고 실패했다. 모두의 영혼이 마법사 한 몸에 빨려 들어갔다.'
+      : '소환을 취소하려면 탑 꼭대기에서 절대마법을 써야 한다. 함께. (니들이랑)';
+    setIf('sub', line, v => { $('h-sub').textContent = v; });
+  }
   function hud(s, dt) {
+    subtitle(s);
     setIf('hp', s.hp + '/' + s.mhp, v => { $('hp-v').textContent = v; $('hp-f').style.width = (s.hp / s.mhp * 100) + '%'; });
     setIf('mp', s.mp, v => { $('mp-v').textContent = v; $('mp-f').style.width = v + '%'; });
     setIf('xp', s.lv + ':' + s.xp + '/' + s.xpn, () => { $('lv-v').textContent = 'LV' + s.lv; $('xp-v').textContent = s.xp + '/' + s.xpn; $('xp-f').style.width = Math.min(100, s.xp / s.xpn * 100) + '%'; });
@@ -255,8 +304,9 @@
     const sab = s.sab[0];
     setIf('sab', sab + s.sab[1], () => {
       $('h-sab').hidden = sab === 'idle';
-      $('sab-l1').textContent = '"' + SAB_LINES[s.sab[1]] + '"';
-      $('sab-l2').textContent = sab === 'warn' ? '마법사가 몸을 되찾으려 한다…' : '조작 반전! (이건 마법사 탓)';
+      const kind = SAB_KIND[s.sab[3]] || SAB_KIND.rev;
+      $('sab-l1').textContent = '"' + (kind.lines[s.sab[1]] || kind.lines[0]) + '"';
+      $('sab-l2').textContent = sab === 'warn' ? '마법사가 몸을 되찾으려 한다…' : kind.name + '! (이건 마법사 탓)';
     });
     // 힌트
     if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('h-hint').hidden = true; }
@@ -272,9 +322,9 @@
     setIf('team', key, () => {
       $('team').innerHTML = s.players.map(p => {
         const rs = ROLES.filter(r => s.roles[r] === p.id);
-        return `<div class="pc${p.id === myId ? ' me' : ''}"><div class="nm">${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${rs.length}개 부위</span></div><div class="chips">` +
+        return `<div class="pc${p.id === myId ? ' me' : ''}" style="border-left-color:${PCOL[p.col || 0]}"><div class="nm">${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${rs.length}개 부위</span></div><div class="chips">` +
           rs.map(r => `<span class="chip" data-r="${r}"><i class="eye"></i>${ROLE_INFO[r].part}<kbd>${ROLE_INFO[r].keys}</kbd></span>`).join('') + '</div></div>';
-      }).join('');
+      }).join('') + '<div class="pinghelp">신호: <kbd>1</kbd> 지금! <kbd>2</kbd> 멈춰! <kbd>3</kbd> 니 탓! <kbd>4</kbd> 나이스!</div>';
       fit();
     });
     for (const el of $('team').querySelectorAll('.chip')) { const on = s.act[el.dataset.r] < 0.18; if (el.classList.contains('on') !== on) el.classList.toggle('on', on); }
@@ -306,7 +356,7 @@
       key = 'res' + s.gen + r.kind;
       const nm = id => esc((r.rows.find(x => x.id === id) || {}).name || '?');
       html = (r.kind === 'clear'
-        ? `<p class="mt" style="color:var(--gold)">B3 클리어!</p><p class="ms">절대마법 재료 획득: 개미가 훔쳐 간 마법가루 · ${r.time}초 · LV${r.lv}</p>`
+        ? `<p class="mt" style="color:var(--gold)">B3 클리어!</p><p class="ms">절대마법 재료 획득: 개미가 훔쳐 간 마법가루 · ${r.time}초 · LV${r.lv}<br>다음 층 B2 지하 창고는 준비 중이에요</p>`
         : `<p class="mt" style="color:var(--red)">게임 오버</p><p class="ms">몸이 하나라 체력 0이면 끝. ${r.time}초 버팀 · LV${r.lv}</p>`) +
         `<table class="res"><tr><th>이름</th><th>처치</th><th>부숨</th><th>막음</th><th>합동기술</th><th>니 탓</th></tr>` +
         r.rows.map(x => `<tr><td>${esc(x.name)}</td><td>${x.kills}</td><td>${x.breaks}</td><td>${x.blocks}</td><td>${x.combos}</td><td>${x.blame}</td></tr>`).join('') + '</table>' +
@@ -350,6 +400,7 @@
       updateMouseWorld();
       handleEvents(snap);
       rend.draw(level, snap, { smooth: !isHost, myId });
+      music.mode(snap.st === 'prologue' ? 'eerie' : snap.boss ? 'boss' : (snap.st === 'play' || snap.st === 'vote' || snap.st === 'intro') ? 'tower' : 'calm');
       hud(snap, dt);
     }
     sendInput(now);
