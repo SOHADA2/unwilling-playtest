@@ -11,6 +11,7 @@
   let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true, prologue: true, screenMove: true };
   let level = window.TUS_LEVEL.build();
   const rend = new window.TUS_RENDER($('cv'));
+  rend.cine = $('cine'); // 컷신 전용 고해상도 캔버스
   const myIn = emptyInput();
   const bot = DEMO && !qs.has('nobot') ? new window.TUS_BOT() : null;
 

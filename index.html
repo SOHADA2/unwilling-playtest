@@ -94,9 +94,11 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 #h-task .l2{font-size:11px;color:var(--ice);margin-top:3px}
 #h-task.wait{border-color:var(--line)}
 #h-task.wait .l1{font-size:13px;color:var(--dim)}
-#h-sub{left:50%;bottom:14px;transform:translateX(-50%);width:92%;text-align:center;font-size:14px;color:#f1ecff;text-shadow:1px 1px 0 #000,0 0 6px #000;line-height:1.5}
+#h-sub{left:50%;bottom:2.2%;transform:translateX(-50%);width:92%;text-align:center;font-size:clamp(13px,1.6vw,18px);color:#f1ecff;text-shadow:1px 1px 0 #000,0 0 6px #000;line-height:1.5}
 #h-skip{right:10px;top:8px;font-size:11px;color:var(--dim);background:rgba(13,11,22,.7);padding:3px 8px;border:1px solid var(--line)}
 #stage.cine .hud:not(#h-sub):not(#h-skip){display:none!important}
+#cine{position:absolute;inset:0;width:100%;height:100%;display:none}
+#stage.cine #cine{display:block}
 #stage:not(.cine) #h-sub,#stage:not(.cine) #h-skip{display:none!important}
 .pinghelp{width:100%;text-align:center;font-size:11px;color:var(--dim);margin-top:2px}
 .pinghelp kbd{font-size:10px}
@@ -175,7 +177,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 
 <section class="screen" id="title">
   <div class="box">
-    <img class="logo" src="assets/logo.png?v=mudsuiiy" alt="The Unwilling Summoned">
+    <img class="logo" src="assets/logo.png?v=mudtdjkd" alt="The Unwilling Summoned">
     <h1 class="title-kr">소환되고 싶지 않아 (니들이랑)</h1>
     <p class="sub">프로토타입 · 마탑 B3 소환실 · 2~4인 협동</p>
     <label class="f" for="nm">내 이름</label>
@@ -196,7 +198,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
       이동: <kbd>W</kbd><kbd>S</kbd> 앞뒤 · <kbd>A</kbd><kbd>D</kbd> 좌우 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프 · <kbd>C</kbd> 앉기<br>
       공격: <kbd>좌클릭</kbd> 왼손 망치 · <kbd>우클릭</kbd> 오른손 마법 · <kbd>마우스</kbd> 정령<br>
       <span id="t-mode"></span><br>
-      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:46</span>
+      <span id="build" style="color:#5c547a">빌드: 2026-09-23 17:01</span>
     </p>
   </div>
 </section>
@@ -222,6 +224,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 <section class="screen" id="play" hidden>
   <div id="stage">
     <canvas id="cv" width="416" height="234"></canvas>
+    <canvas id="cine" width="960" height="540"></canvas>
     <div class="hud" id="h-stats">
       <div class="bar" style="--c:#e04a4a"><span>HP</span><div class="tr"><div class="fl" id="hp-f"></div></div><span class="v" id="hp-v"></span></div>
       <div class="bar" style="--c:#3f8cff"><span>MP</span><div class="tr"><div class="fl" id="mp-f"></div></div><span class="v" id="mp-v"></span></div>
@@ -245,13 +248,13 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 <button id="mute" type="button">소리 켜짐 (M)</button>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/level.js?v=mudsuiiy"></script>
-<script src="src/game.js?v=mudsuiiy"></script>
-<script src="src/bot.js?v=mudsuiiy"></script>
-<script src="src/wizard.js?v=mudsuiiy"></script>
-<script src="src/render.js?v=mudsuiiy"></script>
-<script src="src/prologue.js?v=mudsuiiy"></script>
-<script src="src/net.js?v=mudsuiiy"></script>
-<script src="src/main.js?v=mudsuiiy"></script>
+<script src="src/level.js?v=mudtdjkd"></script>
+<script src="src/game.js?v=mudtdjkd"></script>
+<script src="src/bot.js?v=mudtdjkd"></script>
+<script src="src/wizard.js?v=mudtdjkd"></script>
+<script src="src/render.js?v=mudtdjkd"></script>
+<script src="src/prologue.js?v=mudtdjkd"></script>
+<script src="src/net.js?v=mudtdjkd"></script>
+<script src="src/main.js?v=mudtdjkd"></script>
 </body>
 </html>
