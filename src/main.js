@@ -140,13 +140,13 @@
     if (rend.lv) for (const en of snap.e) {
       if (en[1] === 'rune') continue;
       const p = rend.disp.get('e' + en[0]) || [en[2], en[3], en[4]];
-      const q = rend.P(p[0], p[1], rend.hAt(p[1]) + (p[2] || 0) + (en[1] === 'queen' ? 14 : 5));
+      const q = rend.P(p[0], p[1], rend.hAt(p[0], p[1]) + (p[2] || 0) + (en[1] === 'queen' ? 14 : 5));
       const d = Math.hypot(q[0] - px, q[1] - py);
       if (d < bd) { bd = d; best = { w: [p[0], p[1]], s: q }; }
     }
     rend.aimAt = best ? best.s : null;
     // 아니면 몸통 높이(9px) 기준으로 되돌려서, 화면에서 본 방향 그대로 날아가게
-    const w = best ? best.w : rend.toWorld(px, py, snap.b[1], 9);
+    const w = best ? best.w : rend.toWorld(px, py, snap.b[0], snap.b[1], 9);
     if (w[0] == null) return;
     const nx = Math.round(w[0] * 10) / 10, ny = Math.round(w[1] * 10) / 10;
     if (nx !== myIn.mx || ny !== myIn.my) { myIn.mx = nx; myIn.my = ny; dirty = true; }

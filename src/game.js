@@ -114,7 +114,8 @@
     this.hp = 100; this.mana = 100; this.lv = 1; this.xp = 0; this.xpNeed = 12;
     this.cam = { mode: 'scroll' };
     // 무너지는 계단: 이 y보다 아래(뒤)의 계단 줄은 무너져 있다. 위로 쫓아온다
-    this.col = { on: true, y: s.y + 3 * T, delay: 3, hinted: false };
+    this.col = { on: true, d: -2, delay: 3, hinted: false }; // d 보다 가까운(dist 작은) 계단 칸은 무너져 있다
+    for (const room of lv.rooms) { room.entryD = this.doorDist(room.bottomRow); room.exitD = this.doorDist(room.topRow); }
     this.rollers = []; this.rollHint = {};
     for (const r of lv.rollers) r.t = 0.5;
     this.roomIdx = 0;
@@ -211,10 +212,13 @@
   P.ownerName = function (r) { const p = this.players.find(p => p.id === this.roles[r]); return p ? p.name : '?'; };
 
   // ---------- 타일 ----------
+  P.distAt = function (x, y) { const lv = this.level, r = Math.floor(y / T), c = Math.floor(x / T); return lv.dist[r] && lv.dist[r][c] != null ? lv.dist[r][c] : -1; };
+  P.doorDist = function (row) { const lv = this.level; let d = -1; if (!lv.rows[row]) return -1; for (let c = 0; c < lv.w; c++) if (lv.rows[row][c] === 'D' && lv.dist[row][c] >= 0) d = d < 0 ? lv.dist[row][c] : Math.min(d, lv.dist[row][c]); return d; };
+  P.bodyDist = function () { const d = this.distAt(this.body.x, this.body.y); if (d >= 0) this.lastBodyD = d; return this.lastBodyD || 0; };
   P.tile = function (c, r) { const lv = this.level; if (r < 0 || r >= lv.h || c < 0 || c >= lv.w) return '#'; return lv.rows[r][c]; };
   P.solidAt = function (c, r) {
     const t = this.tile(c, r);
-    if (t === '#') return true;
+    if (t === '#' || t === 'o') return true; // 'o' = 난간 너머 허공 (막힘)
     if (t === 'D') { const d = this.level.doorRows[r]; if (!d) return false; const room = this.level.rooms[d.room]; return d.top ? room.topLocked : room.bottomLocked; }
     return false;
   };
@@ -231,7 +235,7 @@
   };
   P.walkable = function (x, y) {
     if (this.boxHit(x, y, 4, 3, false)) return false;
-    return this.tileAtPx(x, y) !== ' ';
+    const t = this.tileAtPx(x, y); return t !== ' ' && t !== ',';
   };
 
   // ---------- 피해·넉백 ----------
@@ -274,6 +278,7 @@
     this.stepCamera(dt);
     this.stepRollers(dt);
     this.stepSpawns();
+    this.stepDirector(dt);
     this.stepAttacks(dt);
     this.stepEnemies(dt);
     this.stepShots(dt);
@@ -332,10 +337,10 @@
       b.slide = st.slideT; b.vx *= 1.25; b.vy *= 1.25;
       this.combo('slide', ['crouch', runY ? 'fb' : 'lr']);
     }
-    const wasCrouch = b.crouch;
     b.crouch = grounded && (crouchHeld || b.slide > 0);
-    // 들보 밑에서 일어서면 낀다 → 계속 숙인 상태 유지
-    if (wasCrouch && !b.crouch) { b.crouch = true; if (!this.boxHit(b.x, b.y, 5, 4, true)) b.crouch = false; }
+    // 들보 밑에서는 일어설 수 없다 → 숙인 자세 유지 (예전엔 이 판정이 들보를 무시해 몸이 끼었다)
+    const underBeam = this.level.obs.some(o => o.alive && o.k === 'beam' && b.x + 5 > o.x0 && b.x - 5 < o.x1 && b.y + 4 > o.y0 && b.y - 4 < o.y1);
+    if (underBeam) b.crouch = true;
 
     if (b.stun > 0) { b.vx = approach(b.vx, 0, 300 * dt); b.vy = approach(b.vy, 0, 300 * dt); }
     else if (b.slide > 0) { b.vx *= (1 - 1.2 * dt); b.vy *= (1 - 1.2 * dt); }
@@ -359,7 +364,7 @@
       if (this.hicT <= 0) { this.hicT = rnd(0.45, 0.9); b.vz = JUMPV * 0.75; this.emit('hic', {}); }
     }
     // 점프 (달리는 중이면 멀리뛰기)
-    if (jumpEdge && grounded && b.stun <= 0 && b.slide <= 0) {
+    if (jumpEdge && grounded && b.stun <= 0 && b.slide <= 0 && !underBeam) {
       b.vz = JUMPV; b.crouch = false;
       if (speedNow > WALK * 1.15 * st.spd) {
         b.vx *= 1.3; b.vy *= 1.3; b.longJ = true;
@@ -388,11 +393,12 @@
       this.underBeam = null;
     }
     // 구덩이 건너기: 공중에서 낭떠러지 위를 지나 바닥에 내려앉으면 성공
-    if (b.z > 0 && this.tileAtPx(b.x, b.y) === ' ') this.overPit = true;
+    { const tt = this.tileAtPx(b.x, b.y); if (b.z > 0 && (tt === ' ' || tt === ',')) this.overPit = true; }
     // 구덩이
     const onGround = b.z <= 0 && b.vz <= 0;
-    if (onGround && this.overPit) { this.overPit = false; if (this.tileAtPx(b.x, b.y) !== ' ' && !this.collapsedAt(b.y)) this.solve('pit', ['jump']); }
-    if (onGround && (this.tileAtPx(b.x, b.y) === ' ' || this.collapsedAt(b.y))) this.fall();
+    if (onGround && this.overPit) { this.overPit = false; const tt = this.tileAtPx(b.x, b.y); if (tt !== ' ' && tt !== ',' && !this.collapsedAt(b.x, b.y)) this.solve('pit', ['jump']); }
+    const tt0 = this.tileAtPx(b.x, b.y);
+    if (onGround && (tt0 === ' ' || tt0 === ',' || this.collapsedAt(b.x, b.y))) this.fall();
     else if (onGround) {
       b.safeT -= dt;
       if (b.safeT <= 0) { b.safeT = 0.1; b.safe.push([b.x, b.y]); if (b.safe.length > 12) b.safe.shift(); }
@@ -413,34 +419,33 @@
   P.fall = function () {
     const b = this.body;
     // 줄 전체가 낭떠러지(구덩이)면 점프 탓, 다리 옆으로 떨어졌으면 좌우 탓
-    const row = Math.floor(b.y / T);
-    const rowStr = this.level.rows[row] || '';
-    const isPit = rowStr.slice(6, 18) === '            ';
-    const isCol = this.collapsedAt(b.y);
+    const isPit = this.tileAtPx(b.x, b.y) === ' '; // ' ' = 구덩이(점프 탓), ',' = 다리 옆(좌우 탓)
+    const isCol = this.collapsedAt(b.x, b.y);
     b.inv = 0; // 떨어지면 무적 중이어도 피해
+    if (this.sab.phase === 'on') this.sab.t = Math.min(this.sab.t, 0.01); // 몸의 저항은 떨어지면 풀린다 (반전 중 연달아 떨어지는 것 방지)
     if (isCol) this.hurt(12, 'fb', 'collapse');
     else this.hurt(12, isPit ? 'jump' : 'lr', isPit ? 'pit' : 'edge');
     // 조금 전에 서 있던 안전한 곳으로 (무너지는 선보다 충분히 앞)
     let spot = null;
     for (let i = b.safe.length - 1; i >= 0; i--) {
       const s = b.safe[i];
-      if (i <= b.safe.length - 4 && !this.collapsedAt(s[1] + 40) && this.tileAtPx(s[0], s[1]) !== ' ') { spot = s; break; }
+      if (i <= b.safe.length - 4 && this.distAt(s[0], s[1]) >= this.col.d + 3 && this.tileAtPx(s[0], s[1]) === '.') { spot = s; break; }
     }
     if (!spot) spot = this.findSafeAhead();
     b.x = spot[0]; b.y = spot[1]; b.vx = b.vy = 0; b.z = 0; b.vz = 0; b.slide = 0; b.inv = Math.max(b.inv, 1.2);
     b.safe = [];
     this.emit('fall', { x: r1(b.x), y: r1(b.y) });
   };
-  P.collapsedAt = function (y) {
-    const r = Math.floor(y / T);
-    return this.level.rowKind[r] === 'stair' && y > this.col.y;
+  P.collapsedAt = function (x, y) {
+    const r = Math.floor(y / T), d = this.distAt(x, y);
+    return this.level.rowKind[r] === 'stair' && d >= 0 && d < this.col.d;
   };
   P.findSafeAhead = function () {
-    const b = this.body; let best = null, bd = 1e9;
-    const r1_ = Math.min(Math.floor((this.col.y - 40) / T), Math.floor(b.y / T) + 2), r0 = r1_ - 10;
+    const b = this.body; let best = null, bd = 1e9, lo = this.col.d + 3, hi = this.bodyDist() + 6;
+    const r0 = Math.floor(b.y / T) - 14, r1_ = Math.floor(b.y / T) + 14;
     for (let r = r0; r <= r1_; r++) for (let c = 0; c < this.level.w; c++) {
-      const x = c * T + 8, y = r * T + 8;
-      if (this.tile(c, r) !== '.' || this.boxHit(x, y, 5, 4, true) || this.collapsedAt(y + 40)) continue;
+      const x = c * T + 8, y = r * T + 8, dd = this.distAt(x, y);
+      if (this.tile(c, r) !== '.' || dd < lo || dd > hi || this.boxHit(x, y, 5, 4, true)) continue;
       const d = Math.abs(x - b.x) + Math.abs(y - b.y) * 0.5;
       if (d < bd) { bd = d; best = [x, y]; }
     }
@@ -467,10 +472,10 @@
     if (k.delay > 0) { k.delay -= dt; return; }
     if (!k.hinted) { k.hinted = true; this.emit('hint', { k: 'collapse' }); this.emit('collapse', {}); }
     // 너무 멀리 떨어지면 빨라진다 (항상 등 뒤에 있게)
-    const gap = k.y - b.y;
-    k.y -= (COLLAPSE + Math.max(0, gap - 140) * 0.6) * dt;
+    const gap = this.bodyDist() - k.d; // 몇 칸 뒤에서 쫓아오나
+    k.d += (COLLAPSE / T + Math.max(0, gap - 9) * 0.35) * dt;
     const room = this.level.rooms[this.roomIdx];
-    if (room) k.y = Math.max(k.y, (room.bottomRow + 1) * T);
+    if (room && room.entryD >= 0) k.d = Math.min(k.d, room.entryD - 1);
   };
 
   // ---------- 굴러오는 통나무 · 술통 ----------
@@ -478,8 +483,8 @@
     const b = this.body, lv = this.level;
     if (this.cam.mode === 'scroll') {
       for (const s of lv.rollers) {
-        const d = b.y - s.y;
-        if (d < 24 || d > 250) continue;
+        const d = this.distAt(s.x, s.y) - this.bodyDist();
+        if (d < 2 || d > 16) continue;
         s.t -= dt;
         if (s.t > 0) continue;
         s.t = s.k === 'log' ? rnd(3.6, 4.6) : rnd(2.0, 2.8);
@@ -498,7 +503,8 @@
       o.y += o.vy * dt; o.rot += o.vy * dt / 5;
       if (o.k === 'barrel') { const nx = o.x + Math.sin(o.y / 18 + o.ph) * 14 * dt; if (!this.solidAt(Math.floor((nx + (nx > o.x ? 6 : -6)) / T), Math.floor(o.y / T))) o.x = nx; }
       // 구덩이·무너진 곳으로 떨어지거나 바리케이드에 부딪히면 끝
-      if (this.tileAtPx(o.x, o.y + 6) === ' ' || this.collapsedAt(o.y)) { o.dead = true; this.emit('rollfall', { x: r1(o.x), y: r1(o.y) }); continue; }
+      const ta = this.tileAtPx(o.x, o.y + 6);
+      if (ta === ' ' || ta === ',' || this.collapsedAt(o.x, o.y)) { o.dead = true; this.emit('rollfall', { x: r1(o.x), y: r1(o.y) }); continue; }
       const hitBar = this.level.obs.some(q => q.alive && q.k === 'bar' && o.y + 6 > q.y0 && o.y - 6 < q.y1 && (o.k === 'log' || (o.x > q.x0 && o.x < q.x1)));
       if (hitBar || this.solidAt(Math.floor(o.x / T), Math.floor((o.y + 6) / T))) { o.dead = true; this.emit('break', { x: r1(o.x), y: r1(o.y), roll: 1 }); continue; }
       if (b.z < 9) {
@@ -517,13 +523,37 @@
     if (k === 'fly') { e.z = 22; e.t = rnd(0, 6); e.shootT = rnd(1.2, 2.4); e.life = room == null ? 14 : 1e9; e.ax = x; e.ay = y; }
     if (k === 'ant') { e.hit = 0; e.kx = 0; e.ky = 0; }
     if (k === 'egg') { e.hp = 1; e.t = 6; }
+    if (k === 'spit') { e.shootT = rnd(0.8, 1.6); e.w = 0; } // 산성 개미 포수: 제자리에서 침 (방패로 막고, 마법·망치로 잡는다)
     this.enemies.push(e);
     return e;
   };
   P.stepSpawns = function () {
     for (const s of this.level.spawns) {
-      if (!s.done && this.cam.mode === 'scroll' && s.y >= this.body.y - 170 && !this.collapsedAt(s.y)) { s.done = true; this.newEnemy(s.k, s.x, s.y, null); }
+      if (!s.done && this.cam.mode === 'scroll' && this.distAt(s.x, s.y) - this.bodyDist() < 11 && !this.collapsedAt(s.x, s.y)) { s.done = true; this.newEnemy(s.k, s.x, s.y, null); }
     }
+  };
+  // 계단 압박 조율기: 몸 앞쪽 길에 적을 계속 보충해서 모든 공격 역할이 늘 할 일이 있게 한다
+  //   날개 개미 → 불꽃 정령(잡기) + 땅 정령(침 막기) · 개미 떼 → 오른손 마법·왼손 망치 · 산성 포수 → 방패로 버티며 마법으로 처치
+  P.pathSpot = function (d0, d1) {
+    const lv = this.level, b = this.body;
+    if (!lv._byDist) { lv._byDist = {}; lv.dist.forEach((row, r) => row.forEach((d, c) => { if (d >= 0 && lv.rows[r][c] === '.' && lv.rowKind[r] === 'stair') (lv._byDist[d] = lv._byDist[d] || []).push([c * T + 8, r * T + 8]); })); }
+    for (let i = 0; i < 12; i++) {
+      const list = lv._byDist[Math.round(rnd(d0, d1))]; if (!list) continue;
+      const p = list[Math.random() * list.length | 0];
+      if (Math.hypot(p[0] - b.x, p[1] - b.y) > 48 && !this.collapsedAt(p[0], p[1]) && !this.boxHit(p[0], p[1], 5, 4, true)) return p;
+    }
+    return null;
+  };
+  P.stepDirector = function (dt) {
+    if (this.state !== 'play' || this.cam.mode !== 'scroll' || (this.tut && this.tut.on) || this.col.delay > 0) return;
+    const room = this.level.rooms[this.roomIdx]; if (room && room.active) return;
+    const dr = this.dirT || (this.dirT = { fly: 3, ant: 5, spit: 7 });
+    const bd = this.bodyDist(), n = this.players.length, free = this.enemies.filter(e => e.room == null && !e.tr);
+    const cnt = k => free.filter(e => e.k === k).length;
+    for (const k in dr) dr[k] -= dt;
+    if (dr.fly <= 0) { dr.fly = rnd(5, 7.5); if (cnt('fly') < (n >= 3 ? 2 : 1) + 1) { const p = this.pathSpot(bd + 6, bd + 10); if (p) this.newEnemy('fly', p[0], p[1] - 20, null); } }
+    if (dr.ant <= 0) { dr.ant = rnd(6, 9); if (cnt('ant') < 3) { const p = this.pathSpot(bd + 8, bd + 12); if (p) for (let i = 0; i < 2; i++) this.newEnemy('ant', p[0] + rnd(-6, 6), p[1] + rnd(-6, 6), null); } }
+    if (dr.spit <= 0) { dr.spit = rnd(8, 12); if (cnt('spit') < 1) { const p = this.pathSpot(bd + 11, bd + 15); if (p) this.newEnemy('spit', p[0], p[1], null); } }
   };
   P.randomRoomSpot = function (room, minD) {
     const b = this.body;
@@ -574,7 +604,7 @@
     }
     if (room.cleared && b.y + 4 < room.topRow * T) {
       this.roomIdx++; this.cam.mode = 'scroll';
-      this.col.on = true; this.col.y = (room.topRow + 1) * T; this.col.delay = 2.5;
+      this.col.on = true; this.col.d = room.exitD; this.col.delay = 2.5;
       if (this.opts.shuffle && !this.shuffled && this.players.length > 1) { this.shuffled = true; this.doShuffle(); }
     }
   };
@@ -639,7 +669,7 @@
         for (const e of this.enemies) {
           const d = Math.hypot(e.x - hx, e.y - hy);
           if ((e.k === 'egg' || e.k === 'crate') && d < R + 6) this.damage(e, 1, 'lh');
-          else if (e.k === 'ant' && d < R + 2) this.damage(e, 1 * this.stats.atk * this.stats.lhDmg, 'lh');
+          else if ((e.k === 'ant' || e.k === 'spit') && d < R + 2) this.damage(e, 1 * this.stats.atk * this.stats.lhDmg, 'lh');
           else if (e.k === 'queen' && d < R + 16) this.damage(e, 2 * this.stats.atk * this.stats.lhDmg, 'lh');
           if (this.stats.stunHit && e.k === 'ant' && d < R + 12) e.stun = 1; // 대지 강타: 기절
         }
@@ -691,14 +721,14 @@
     if (e.k === 'ant') { const b = this.body; const dx = e.x - b.x, dy = e.y - b.y, d = Math.hypot(dx, dy) || 1; e.hit = 0.15; e.kx = dx / d * 120; e.ky = dy / d * 120; }
     if (e.hp <= 0) {
       e.dead = true;
-      const xp = e.tr ? 1 : ({ ant: 3, fly: 4, egg: 1, queen: 0 }[e.k] || 0);
+      const xp = e.tr ? 1 : ({ ant: 3, spit: 4, fly: 4, egg: 1, queen: 0 }[e.k] || 0);
       this.xp += xp;
       const pid = this.roles[role];
       if (this.pstats[pid]) { if (e.k === 'egg' || e.k === 'crate') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
       if (e.tr) this.tutDone(e.k === 'crate' ? 'lh' : e.k === 'ant' ? 'rh' : 'atk');
       this.emit('kill', { k: e.k, x: r1(e.x), y: r1(e.y - e.z) });
       if (!e.tr) this.hitStop = e.k === 'queen' ? 0.35 : 0.06;
-      if (e.k === 'ant' || e.k === 'fly' || e.k === 'egg' || e.k === 'crate') this.solve(e.k === 'fly' ? 'fly' : e.k === 'ant' ? 'ant' : 'crate', [role]);
+      if (e.k === 'ant' || e.k === 'spit' || e.k === 'fly' || e.k === 'egg' || e.k === 'crate') this.solve(e.k === 'fly' ? 'fly' : (e.k === 'ant' || e.k === 'spit') ? 'ant' : 'crate', [role]);
       if (e.k === 'queen') this.finish('clear');
     }
   };
@@ -715,7 +745,7 @@
       if (s.k === 'rh' && this.solidAt(Math.floor(s.x / T), Math.floor(s.y / T))) { s.dead = true; this.emit('poof', { x: r1(s.x), y: r1(s.y) }); continue; }
       for (const e of this.enemies) {
         if (e.dead) continue;
-        if (s.k === 'rh' && (e.k === 'ant' || e.k === 'queen')) {
+        if (s.k === 'rh' && (e.k === 'ant' || e.k === 'spit' || e.k === 'queen')) {
           const r = e.k === 'queen' ? 18 : 8;
           if (Math.hypot(e.x - s.x, e.y - s.y) < r && !(s.hit && s.hit.includes(e.id))) {
             this.damage(e, 1 * this.stats.atk, 'rh'); this.emit('poof', { x: r1(s.x), y: r1(s.y) });
@@ -723,7 +753,7 @@
             s.dead = true; break;
           }
         }
-        if (s.k === 'rf' && (e.k === 'ant' || e.k === 'queen' || e.k === 'fly')) {
+        if (s.k === 'rf' && (e.k === 'ant' || e.k === 'spit' || e.k === 'queen' || e.k === 'fly')) {
           if (Math.hypot(e.x - s.x, (e.y - (e.z || 0)) - s.y) < (e.k === 'queen' ? 20 : 10)) { this.damage(e, 1.5 * this.stats.atk, 'def'); s.dead = true; this.emit('poof', { x: r1(s.x), y: r1(s.y) }); break; }
         }
         if (s.k === 'sp' && e.k === 'fly') {
@@ -791,17 +821,22 @@
       } else if (e.k === 'fly') {
         e.t += dt; e.life -= dt;
         let tx, ty;
-        if (e.room == null) { tx = e.ax + Math.sin(e.t * 0.9) * 28; ty = b.y - 84 + Math.sin(e.t * 1.3) * 10; if (e.life < 0) ty = b.y - 320; }
+        if (e.room == null) { tx = e.ax + Math.sin(e.t * 0.9) * 30; ty = e.ay + Math.sin(e.t * 1.3) * 16; if (e.life < 0) ty = e.ay - 320; }
         else { tx = e.ax + Math.sin(e.t * 0.8) * 40; ty = e.ay + Math.cos(e.t * 1.1) * 18; }
         e.x += (tx - e.x) * Math.min(1, 1.6 * dt); e.y += (ty - e.y) * Math.min(1, 1.6 * dt);
         e.shootT -= dt;
-        if (e.shootT <= 0 && e.life > 0) { e.shootT = rnd(2.2, 3.0); this.fireAt(e.x, e.y - e.z, 72); }
-        if (e.life < 0 && e.y < b.y - 280) e.dead = true;
+        if (e.shootT <= 0 && e.life > 0) { e.shootT = rnd(1.6, 2.3); this.fireAt(e.x, e.y - e.z, 72); }
+        if (e.life < 0 && e.y < e.ay - 280) e.dead = true;
+      } else if (e.k === 'spit') {
+        const d = Math.hypot(b.x - e.x, b.y - e.y);
+        if (e.w > 0) { e.w -= dt; if (e.w <= 0) { this.fireAt(e.x, e.y - 8, 88); e.shootT = rnd(1.9, 2.6); } } // 준비 동작(부풀어 오름) 뒤 발사
+        else if (d < 190) { e.shootT -= dt; if (e.shootT <= 0) e.w = 0.5; }
+        if (d < 10 && b.z < 10) { if (this.hurt(6, 'rh', 'ant')) this.knock((b.x - e.x) / (d || 1), (b.y - e.y) / (d || 1), 120); }
       } else if (e.k === 'egg') {
         e.t -= dt;
         if (e.t <= 0) { e.dead = true; for (let i = 0; i < 2; i++) { const a = this.newEnemy('ant', e.x + rnd(-8, 8), e.y + rnd(-6, 6), e.room); a.fast = true; } this.emit('hatch', { x: r1(e.x), y: r1(e.y) }); }
       } else if (e.k === 'queen') this.stepQueen(e, dt);
-      if (e.room == null && (e.y > b.y + 260 || (e.k === 'ant' && this.collapsedAt(e.y)))) e.dead = true;
+      if (e.room == null && !e.tr && (Math.hypot(e.x - b.x, e.y - b.y) > 340 || ((e.k === 'ant' || e.k === 'spit') && this.collapsedAt(e.x, e.y)))) e.dead = true;
     }
     this.enemies = this.enemies.filter(e => !e.dead);
   };
@@ -899,7 +934,7 @@
   P.stepHints = function () {
     if (this.tut && this.tut.on) return; // 훈련 중엔 일반 힌트 미룸
     for (const h of this.level.hints) {
-      if (!this.hintsDone[h.id] && h.y >= this.body.y - 150 && h.y <= this.body.y + 24) { this.hintsDone[h.id] = 1; this.emit('hint', { k: h.k }); }
+      if (!this.hintsDone[h.id] && this.bodyDist() >= h.d - 9) { this.hintsDone[h.id] = 1; this.emit('hint', { k: h.k }); }
     }
   };
 
@@ -977,7 +1012,7 @@
   P.camTarget = function () {
     const room = this.level.rooms[this.roomIdx];
     if (room && room.active) { const cx = (room.x0 + room.x1) / 2, cy = (room.y0 + room.y1) / 2; return [r1(this.body.x + (cx - this.body.x) * 0.35), r1(this.body.y + (cy - this.body.y) * 0.35)]; }
-    return [r1(this.body.x), r1(this.body.y - 36)];
+    return [r1(this.body.x - 14), r1(this.body.y - 14)];
   };
 
   // ---------- 스냅샷 ----------
@@ -988,12 +1023,12 @@
     return {
       gen: this.gen, st: this.state, stT: r1(this.stateT), time: r1(this.time),
       ct: this.camTarget(),
-      col: r1(this.col.y),
+      col: r1(this.col.d),
       ro: this.rollers.map(o => [o.id, o.k, r1(o.x), r1(o.y), r1(o.rot), o.k === 'log' ? r1(o.x0) : 0, o.k === 'log' ? r1(o.x1) : 0]),
       b: [r1(b.x), r1(b.y), r1(b.z), b.crouch ? 1 : 0, b.slide > 0 ? 1 : 0, b.inv > 0 ? 1 : 0, r1(b.faceX), r1(b.vx)],
       hp: Math.ceil(this.hp), mhp: this.stats.mhp, mp: Math.floor(this.mana), lv: this.lv, xp: this.xp, xpn: this.xpNeed,
       sab: [this.sab.phase, this.sab.line, r1(this.sab.t), this.sab.kind || 'rev'],
-      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : 0), e.tr ? 1 : 0, e.k === 'queen' ? r1(e.act === 'spitw' ? e.aim : Math.atan2(e.dvy || 0, e.dvx || 0)) : 0]),
+      e: this.enemies.map(e => [e.id, e.k, r1(e.x), r1(e.y), r1(e.z), e.flash > 0 ? 1 : 0, e.k === 'queen' ? e.act : (e.k === 'egg' ? r1(e.t) : (e.k === 'spit' && e.w > 0 ? 'w' : 0)), e.tr ? 1 : 0, e.k === 'queen' ? r1(e.act === 'spitw' ? e.aim : Math.atan2(e.dvy || 0, e.dvx || 0)) : 0]),
       sh: this.shots.map(x => [x.id, x.k, r1(x.x), r1(x.y)]),
       es: this.eshots.map(x => [x.id, r1(x.x), r1(x.y)]),
       sp: [r1(s.ax), r1(s.ay), r1(s.dx), r1(s.dy), r1(this.stats.defR)],
