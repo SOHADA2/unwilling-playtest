@@ -8,7 +8,7 @@
   const MODE = qs.has('local') ? 'local' : 'peer';
   const DEMO = qs.has('demo');
 
-  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true, prologue: true };
+  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true, tutorial: true, prologue: true, screenMove: true };
   let level = window.TUS_LEVEL.build();
   const rend = new window.TUS_RENDER($('cv'));
   const myIn = emptyInput();
@@ -75,7 +75,7 @@
   };
   $('code-in').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-join').click(); });
   $('b-leave').onclick = () => location.reload();
-  $('o-sab').onchange = $('o-shuf').onchange = $('o-tut').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked, tutorial: $('o-tut').checked, prologue: true }; pushLobby(); };
+  $('o-sab').onchange = $('o-shuf').onchange = $('o-tut').onchange = $('o-map').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked, tutorial: $('o-tut').checked, prologue: true, screenMove: !$('o-map').checked }; pushLobby(); };
   $('b-start').onclick = () => {
     game = new Game(lobby, opts);
     game.inputs[myId] = myIn;
@@ -90,11 +90,11 @@
     }
     $('r-list').innerHTML = li.join('');
     $('r-host-opts').hidden = !isHost; $('r-wait').hidden = isHost;
-    if (!isHost) $('r-wait').textContent = `방장이 시작하기를 기다리는 중… (훈련 ${opts.tutorial ? '켬' : '끔'} · 사보타주 ${opts.sabotage ? '켬' : '끔'} · 영혼 셔플 ${opts.shuffle ? '켬' : '끔'})`;
+    if (!isHost) $('r-wait').textContent = `방장이 시작하기를 기다리는 중… (이동 ${opts.screenMove === false ? '계단 기준' : '화면 기준'} · 훈련 ${opts.tutorial ? '켬' : '끔'} · 사보타주 ${opts.sabotage ? '켬' : '끔'} · 영혼 셔플 ${opts.shuffle ? '켬' : '끔'})`;
   }
   function startSolo() {
     isHost = true; myId = 'me';
-    game = new Game([{ id: 'me', name: myName() }], Object.assign({}, opts, { tutorial: !DEMO && $('t-tut').checked, prologue: !DEMO }));
+    game = new Game([{ id: 'me', name: myName() }], Object.assign({}, opts, { tutorial: !DEMO && $('t-tut').checked, prologue: !DEMO, screenMove: !DEMO && !$('t-map').checked }));
     game.inputs.me = myIn;
     if (DEMO) { if (!qs.has('intro')) game.state = 'play'; const ff = +qs.get('ff') || 0; for (let i = 0; i < ff * 60; i++) { if (bot) bot.drive(game, myIn, DT); game.step(); if (game.state === 'intro' && !qs.has('intro')) game.state = 'play'; } }
     show('play');
@@ -302,7 +302,7 @@
         }
         case 'sabswap': toast(`영혼 뒤바뀜! ${nameOf(ev.a)} ↔ ${nameOf(ev.b)} 역할이 잠깐 바뀜`, 'wiz'); break;
         case 'ping': beep(ev.k === 2 ? 300 : 700, ev.k === 2 ? 200 : 900, 0.08, 'square', 0.04); break;
-        case 'tutstep': { const q = TUT.find(q => q.id === ev.id); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
+        case 'tutstep': { const q = tutText(TUT.find(q => q.id === ev.id), s); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
         case 'tutstage': banner(TUT_STAGES[ev.stage].title, ev.stage === 1 ? '연습용 표적이 나타났어요' : '두 사람이 타이밍을 맞춰야 해요', 1.6); SFX.vote(); break;
         case 'tutdone': banner('훈련 끝!', '아래 계단이 곧 무너진다 — 바리케이드를 부수고 위로!', 3.5); SFX.vote(); break;
       }
@@ -310,6 +310,16 @@
   }
 
   // ---------------- 튜토리얼 ----------------
+  // 화면 기준 이동이면 걷기 과제 설명을 바꾼다
+  const tutText = (q, s) => {
+    if (!s.sm) return q;
+    const alt = {
+      fb: { text: 'W/S로 위아래 걷기', how: 'W = 화면 위, S = 화면 아래' },
+      lr: { text: 'A/D로 좌우 걷기', how: 'A = 화면 왼쪽, D = 화면 오른쪽' },
+      diag: { text: '[합동] 계단 오르기 (W+D)', how: '계단은 화면 오른쪽 위로 뻗어 있어요 — 앞뒤 담당 W + 좌우 담당 D를 같이' },
+    }[q.id];
+    return alt ? Object.assign({}, q, alt) : q;
+  };
   const tutWho = (q, s) => [...new Set(q.roles.map(r => s.roles[r]))].map(id => id === myId ? '나' : nameOf(id)).join('+');
   function tutHud(s) {
     const t = s.tut, on = !!(t && t.on && s.st === 'play');
@@ -317,7 +327,7 @@
     if (!on) return;
     const key = JSON.stringify(t.done) + JSON.stringify(s.roles) + t.stage + t.pause + JSON.stringify(t.act);
     setIf('tut', key, () => {
-      const Q = id => TUT.find(q => q.id === id);
+      const Q = id => tutText(TUT.find(q => q.id === id), s);
       const n = TUT.filter(q => t.done[q.id]).length;
       // 지난 단계는 한 줄로 접고, 지금 단계만 펼치고, 다음 단계는 잠금
       let rows = '';

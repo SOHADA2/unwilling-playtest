@@ -166,7 +166,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 
 <section class="screen" id="title">
   <div class="box">
-    <img class="logo" src="assets/logo.png?v=mudrnyvv" alt="The Unwilling Summoned">
+    <img class="logo" src="assets/logo.png?v=mudrxtpc" alt="The Unwilling Summoned">
     <h1 class="title-kr">소환되고 싶지 않아 (니들이랑)</h1>
     <p class="sub">프로토타입 · 마탑 B3 소환실 · 2~4인 협동</p>
     <label class="f" for="nm">내 이름</label>
@@ -180,13 +180,14 @@ table.res td:first-child,table.res th:first-child{text-align:left}
     <div class="or">혼자</div>
     <button class="btn" id="b-solo">혼자 연습 (모든 역할을 내가)</button>
     <label class="opt"><input type="checkbox" id="t-tut" checked> 몸 적응 훈련(튜토리얼)부터 시작</label>
+    <label class="opt"><input type="checkbox" id="t-map"> 이동을 계단 기준으로 (끄면 화면 기준: W=화면 위, D=화면 오른쪽)</label>
     <div class="err" id="t-err"></div>
     <p class="note">
       <b>조작</b> — 게임이 시작되면 각자 맡은 몸 부위만 움직일 수 있어요.<br>
       이동: <kbd>W</kbd><kbd>S</kbd> 앞뒤 · <kbd>A</kbd><kbd>D</kbd> 좌우 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프 · <kbd>C</kbd> 앉기<br>
       공격: <kbd>좌클릭</kbd> 왼손 망치 · <kbd>우클릭</kbd> 오른손 마법 · <kbd>마우스</kbd> 정령<br>
       <span id="t-mode"></span><br>
-      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:13</span>
+      <span id="build" style="color:#5c547a">빌드: 2026-09-23 16:21</span>
     </p>
   </div>
 </section>
@@ -200,6 +201,7 @@ table.res td:first-child,table.res th:first-child{text-align:left}
       <label class="opt"><input type="checkbox" id="o-sab" checked> 사보타주 (마법사가 가끔 조작을 뒤집음)</label>
       <label class="opt"><input type="checkbox" id="o-shuf" checked> 영혼 셔플 (첫 방을 깨면 역할이 섞임)</label>
       <label class="opt"><input type="checkbox" id="o-tut" checked> 몸 적응 훈련부터 시작 (처음이면 꼭 켜기)</label>
+      <label class="opt"><input type="checkbox" id="o-map"> 이동을 계단 기준으로 (끄면 화면 기준: 계단을 오르려면 W+D를 둘이 같이)</label>
       <button class="btn main" id="b-start">시작</button>
     </div>
     <p class="ms" id="r-wait" hidden style="margin-top:12px">방장이 시작하기를 기다리는 중…</p>
@@ -234,13 +236,13 @@ table.res td:first-child,table.res th:first-child{text-align:left}
 <button id="mute" type="button">소리 켜짐 (M)</button>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/level.js?v=mudrnyvv"></script>
-<script src="src/game.js?v=mudrnyvv"></script>
-<script src="src/bot.js?v=mudrnyvv"></script>
-<script src="src/wizard.js?v=mudrnyvv"></script>
-<script src="src/render.js?v=mudrnyvv"></script>
-<script src="src/prologue.js?v=mudrnyvv"></script>
-<script src="src/net.js?v=mudrnyvv"></script>
-<script src="src/main.js?v=mudrnyvv"></script>
+<script src="src/level.js?v=mudrxtpc"></script>
+<script src="src/game.js?v=mudrxtpc"></script>
+<script src="src/bot.js?v=mudrxtpc"></script>
+<script src="src/wizard.js?v=mudrxtpc"></script>
+<script src="src/render.js?v=mudrxtpc"></script>
+<script src="src/prologue.js?v=mudrxtpc"></script>
+<script src="src/net.js?v=mudrxtpc"></script>
+<script src="src/main.js?v=mudrxtpc"></script>
 </body>
 </html>

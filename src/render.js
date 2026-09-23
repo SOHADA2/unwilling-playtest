@@ -372,8 +372,10 @@
     // 쿼터뷰에서 W/A/S/D가 어느 쪽인지
     const dirs = [];
     const moveNow = r => act.includes(r) || act.includes('diag') || (r === 'fb' && act.includes('long'));
-    if (s.roles.fb === opt.myId && moveNow('fb')) dirs.push(['W', 0, -30], ['S', 0, 30]);
-    if (s.roles.lr === opt.myId && moveNow('lr')) dirs.push(['A', -30, 0], ['D', 30, 0]);
+    // 화면 기준이면 화살표도 화면 위·아래·왼쪽·오른쪽 (세계 좌표로 바꿔서 그림)
+    const d = 30, h = 21;
+    if (s.roles.fb === opt.myId && moveNow('fb')) dirs.push(...(s.sm ? [['W', -h, -h], ['S', h, h]] : [['W', 0, -d], ['S', 0, d]]));
+    if (s.roles.lr === opt.myId && moveNow('lr')) dirs.push(...(s.sm ? [['A', -h, h], ['D', h, -h]] : [['A', -d, 0], ['D', d, 0]]));
     const c0 = this.P(bp[0], bp[1], be + 2);
     for (const [k, dx, dy] of dirs) {
       const q = this.P(bp[0] + dx, bp[1] + dy, be + 2);

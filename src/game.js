@@ -332,12 +332,14 @@
       const wx = WALK * st.spd, rx = RUN * st.spd;
       let tvx = mx * (runX ? rx : wx), tvy = my * (runY ? rx : wx);
       if (mx && my) { tvx *= 0.8; tvy *= 0.8; }
+      // 화면 기준 이동: W=화면 위, D=화면 오른쪽 → 쿼터뷰 세계 방향으로 돌린다 (계단은 W+D)
+      if (this.opts.screenMove) { const sx = tvx, sy = tvy; tvx = (sx + sy) * Math.SQRT1_2; tvy = (sy - sx) * Math.SQRT1_2; }
       if (b.crouch) { tvx *= 0.45; tvy *= 0.45; }
       const acc = grounded ? (b.landSlide > 0 ? 160 : 1100) : 240;
       b.vx = approach(b.vx, tvx, acc * dt); b.vy = approach(b.vy, tvy, acc * dt);
     }
     // 대각선 = 앞뒤 + 좌우 동시
-    if (mx && my && b.stun <= 0) { b.diagT += dt; if (b.diagT > 0.5 && !b.diagDone) { b.diagDone = true; this.combo('diag', ['fb', 'lr']); this.tutDone('diag'); } }
+    if (mx && my && b.stun <= 0) { b.diagT += dt; if (b.diagT > 0.5 && !b.diagDone) { b.diagDone = true; if (!this.opts.screenMove) this.combo('diag', ['fb', 'lr']); this.tutDone('diag'); /* 화면 기준에선 계단 오르기가 늘 W+D라 팝업 생략 */ } }
     else { b.diagT = 0; b.diagDone = false; }
 
     // 딸꾹질 사보타주: 멋대로 튀어 오른다
@@ -962,6 +964,7 @@
       boss: (() => { const q = this.enemies.find(e => e.k === 'queen'); return q ? [Math.max(0, Math.ceil(q.hp)), q.max] : null; })(),
       res: this.result,
       ready: Object.keys(this.ready || {}), stTot: this.state === 'shuffle' ? SHUF_T : INTRO_T,
+      sm: this.opts.screenMove ? 1 : 0,
       tut: this.tut ? { on: this.tut.on, done: this.tut.done, stage: this.tut.stage, solo: this.tut.solo, cur: this.tut.cur, pause: this.tut.pause > 0 ? 1 : 0, act: this.tutActive() } : null,
     };
   };

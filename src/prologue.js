@@ -54,7 +54,7 @@
   R.prologue = function (s, now) {
     const x = this.x, t = LEN - s.stT, sc = sceneAt(t), u = Math.max(0, t - sc.t0), d = sc.t1 - sc.t0;
     const pls = s.players && s.players.length ? s.players : [{ name: '?', col: 0 }];
-    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=mudrnyvv'; }
+    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=mudrxtpc'; }
     x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingEnabled = false; x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
     x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
     // 천천히 다가가는 카메라
