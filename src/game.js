@@ -49,7 +49,7 @@
   };
   const SAB_LINES = SAB_KIND.rev.lines;
   const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
-  const PROLOGUE_LEN = 21;
+  const PROLOGUE_LEN = 26; // prologue.js 의 LEN 과 같게
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const approach = (v, t, d) => v < t ? Math.min(v + d, t) : Math.max(v - d, t);

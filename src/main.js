@@ -184,6 +184,8 @@
     return { start, mode: m => { cur = m; } };
   })();
   function toggleMute() { muted = !muted; try { localStorage.setItem('tus-mute', muted ? '1' : '0'); } catch (e) { } $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)'; }
+  addEventListener('pointerdown', () => audioOn(), true);
+  addEventListener('keydown', () => audioOn(), true);
   $('mute').onclick = toggleMute; $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)';
   function beep(f0, f1, dur, type, vol) {
     if (!AC || muted) return;
@@ -192,6 +194,40 @@
     g.gain.setValueAtTime(vol || 0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur);
   }
+  function noise(dur, freq, vol, t0) {
+    if (!AC || muted) return;
+    const t = AC.currentTime + (t0 || 0), n = Math.floor(AC.sampleRate * dur), buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = buf; f.type = 'bandpass'; f.frequency.value = freq; g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(AC.destination); src.start(t);
+  }
+  function pad(freqs, dur, vol, type) {
+    if (!AC || muted) return;
+    const t = AC.currentTime;
+    for (const fq of freqs) {
+      const o = AC.createOscillator(), g = AC.createGain(); o.type = type || 'sawtooth'; o.frequency.value = fq; o.detune.value = (Math.random() - 0.5) * 12;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.35); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
+      o.connect(lp); lp.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.1);
+    }
+  }
+  // 프롤로그 장면 효과음 (prologue.js 의 CUES 이름과 짝)
+  const PSFX = {
+    boom: () => { beep(90, 30, 1.4, 'sine', 0.22); noise(0.8, 120, 0.25); },
+    sparkle: () => { beep(1800 + Math.random() * 900, 2600, 0.12, 'triangle', 0.025); },
+    scuttle: () => { for (let i = 0; i < 3; i++) noise(0.03, 3000 + Math.random() * 1500, 0.05, i * 0.05); },
+    chant: () => { pad([110, 164.8, 220, 261.6], 3.2, 0.035); beep(220, 330, 3, 'sine', 0.03); },
+    surge: () => { beep(200, 900, 0.9, 'sawtooth', 0.05); noise(0.9, 600, 0.12); },
+    cozy: () => { pad([261.6, 329.6, 392], 2.2, 0.02, 'triangle'); },
+    bicker: () => { const f = 300 + Math.random() * 400; beep(f, f * (Math.random() < 0.5 ? 1.3 : 0.75), 0.12, 'square', 0.035); },
+    flicker: () => { noise(0.25, 2000, 0.08); },
+    portal: () => { beep(900, 80, 1.2, 'sawtooth', 0.06); noise(1.2, 300, 0.18); },
+    grab: s => { (s.players || [1]).forEach((_, i) => { beep(200, 1200, 0.35, 'sawtooth', 0.05); noise(0.35, 1500, 0.1, i * 0.08); }); },
+    flash: () => { noise(0.7, 800, 0.3); beep(60, 30, 1.6, 'sine', 0.25); },
+    chime: () => { const f = [523.3, 659.3, 784, 1046.5][Math.floor(Math.random() * 4)]; beep(f, f, 0.8, 'triangle', 0.05); beep(f * 2, f * 2, 0.5, 'sine', 0.02); },
+    title: () => { pad([110, 130.8, 164.8, 220], 3.4, 0.04); setTimeout(() => beep(880, 880, 1.2, 'triangle', 0.05), 300); },
+  };
   const SFX = {
     jump: () => beep(300, 620, 0.12), land: () => beep(120, 60, 0.06, 'triangle', 0.05), shoot: () => beep(900, 500, 0.06, 'square', 0.03),
     spshoot: () => beep(700, 1100, 0.07, 'triangle', 0.04), break: () => { beep(160, 50, 0.18, 'sawtooth', 0.07); beep(90, 40, 0.2, 'square', 0.04); },
@@ -281,18 +317,18 @@
   const cache = {};
   function setIf(key, val, fn) { if (cache[key] !== val) { cache[key] = val; fn(val); } }
   rend.face($('face'));
+  let proT = -1;
   function subtitle(s) {
     const cine = s.st === 'prologue';
+    if (!cine) proT = -1;
     $('stage').classList.toggle('cine', cine); $('team').style.visibility = cine ? 'hidden' : '';
     if (!cine) return;
-    const t = PROLOGUE_LEN - s.stT, names = s.players.map(p => p.name).join(', ');
-    const line = t < 4.5 ? '어둡고 음침한 마탑 지하 3층. 한 마법사가 소환 마법진을 그리고 있었다.'
-      : t < 8.5 ? '…그런데 개미들이 마법진의 가루를 열심히 날라 가고 있었다.'
-      : t < 11.5 ? '마법진이 지워진 줄도 모르고, 마법사는 영창을 시작했다.'
-      : t < 15.5 ? `같은 시각, 현실 세계. 투닥거리던 ${names} 앞에 — 손이 뻗어 왔다.`
-      : t < 18.5 ? '소환은… 조용했다. 그리고 실패했다. 모두의 영혼이 마법사 한 몸에 빨려 들어갔다.'
-      : '소환을 취소하려면 탑 꼭대기에서 절대마법을 써야 한다. 함께. (니들이랑)';
-    setIf('sub', line, v => { $('h-sub').textContent = v; });
+    const P = window.TUS_PROLOGUE, t = P.LEN - s.stT, names = s.players.map(p => p.name).join(', ');
+    setIf('sub', P.subtitle(t, names), v => { $('h-sub').textContent = v; });
+    // 장면 효과음: 지난 프레임과 이번 프레임 사이에 지나간 신호를 울린다
+    if (proT < 0 || t < proT) proT = t - 0.001;
+    for (const c of P.CUES) if (c.t > proT && c.t <= t && PSFX[c.s]) PSFX[c.s](s);
+    proT = t;
   }
   function hud(s, dt) {
     subtitle(s);
@@ -406,5 +442,5 @@
     sendInput(now);
   }
   requestAnimationFrame(frame);
-  window.__tus = { get game() { return game; }, get snap() { return snap; }, get net() { return net; }, get lobby() { return lobby; }, get myId() { return myId; } };
+  window.__tus = { get game() { return game; }, get snap() { return snap; }, get net() { return net; }, get lobby() { return lobby; }, get myId() { return myId; }, get rend() { return rend; }, get level() { return level; } };
 })();
