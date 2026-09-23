@@ -115,12 +115,20 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 .chip.on .eye{background:#fff}
 
 /* 모달 */
-#modal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,4,10,.72);pointer-events:auto;padding:12px}
+#modal{position:fixed;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,4,10,.72);pointer-events:auto;padding:12px}
 #modal[hidden]{display:none}
 #modal .box{max-width:640px;max-height:100%;overflow:auto}
 .mt{font-family:"Galmuri14",monospace;font-size:20px;margin:0 0 4px;text-align:center}
 .ms{color:var(--dim);font-size:12px;text-align:center;margin:0 0 14px}
 .myroles{display:grid;gap:8px}
+.myroles.many{grid-template-columns:repeat(2,minmax(0,1fr))}
+.myroles.many .rolecard{padding:6px 8px}
+.myroles.many .rolecard .big{font-size:13px}
+#bodymap{display:block;width:100%;max-width:440px;margin:0 auto 10px;image-rendering:pixelated}
+.readyrow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px;font-size:12px}
+.readyrow span{padding:3px 8px;border:1px solid var(--line);color:var(--dim)}
+.readyrow span.on{color:var(--green);border-color:var(--green)}
+#modal .box.wide{max-width:760px}
 .rolecard{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;background:#0f0c1a;border:2px solid var(--line);padding:10px 12px}
 .rolecard .big{font-family:"Galmuri14",monospace;font-size:16px}
 .rolecard .tip{color:var(--dim);font-size:11px;margin-top:2px}

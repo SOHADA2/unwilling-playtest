@@ -57,6 +57,7 @@
   const TUT_ORDER = TUT_STAGES.flatMap(g => g.ids);
   const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
   const PROLOGUE_LEN = 26; // prologue.js 의 LEN 과 같게
+  const INTRO_T = 15, SHUF_T = 10; // 역할 배정 화면 최대 시간 (모두 '준비 완료'면 바로 시작)
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const approach = (v, t, d) => v < t ? Math.min(v + d, t) : Math.max(v - d, t);
@@ -77,7 +78,7 @@
     return owner;
   }
 
-  function emptyInput() { return { k: {}, mx: null, my: null, lb: 0, rb: 0, cj: 0, cc: 0, cl: 0, cr: 0, vk: 0, vi: -1, pg: 0, pk: 0, sk: 0 }; }
+  function emptyInput() { return { k: {}, mx: null, my: null, lb: 0, rb: 0, cj: 0, cc: 0, cl: 0, cr: 0, vk: 0, vi: -1, pg: 0, pk: 0, sk: 0, rd: 0 }; }
 
   function Game(players, opts) {
     this.players = players.map((p, i) => ({ id: p.id, name: p.name, col: i % 4 })); // col = 플레이어 색 번호
@@ -93,10 +94,11 @@
     const lv = this.level = L.build();
     this.gen++;
     this.time = 0; const pro = this.opts.prologue && this.gen === 1; // 다시 하기 때는 프롤로그 생략
-    this.state = pro ? 'prologue' : 'intro'; this.stateT = pro ? PROLOGUE_LEN : 8;
+    this.state = pro ? 'prologue' : 'intro'; this.stateT = pro ? PROLOGUE_LEN : INTRO_T;
+    this.ready = {}; this.rdCnt = {};
     this.pingCnt = {}; this.pingT = {}; this.skipCnt = {};
     this.sabSwap = null; this.hicT = 0;
-    for (const p of this.players) { const I = this.inputs[p.id] || emptyInput(); this.pingCnt[p.id] = I.pg || 0; this.skipCnt[p.id] = I.sk || 0; }
+    for (const p of this.players) { const I = this.inputs[p.id] || emptyInput(); this.pingCnt[p.id] = I.pg || 0; this.skipCnt[p.id] = I.sk || 0; this.rdCnt[p.id] = I.rd || 0; }
     const s = lv.start;
     this.body = { x: s.x, y: s.y, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, inv: 0, slide: 0, landSlide: 0, longJ: false, crouch: false, faceX: 0, faceY: -1, diagT: 0, diagDone: false, safe: [], safeT: 0 };
     this.stats = { mhp: 100, atk: 1, spd: 1, regen: 16, defR: 10, sab: 1 };
@@ -246,10 +248,15 @@
       // 누구든 넘기기(Enter/클릭)를 누르면 넘어간다
       for (const p of this.players) { const I = this.inputs[p.id]; if (I && I.sk > (this.skipCnt[p.id] || 0)) { this.stateT = 0; this.emit('skip', { pid: p.id }); } }
       this.stateT -= dt;
-      if (this.stateT <= 0) { this.state = 'intro'; this.stateT = 8; }
+      if (this.stateT <= 0) { this.state = 'intro'; this.stateT = INTRO_T; this.ready = {}; }
       this.pruneEvents(); return;
     }
-    if (this.state === 'intro' || this.state === 'shuffle') { this.stateT -= dt; if (this.stateT <= 0) this.state = 'play'; this.pruneEvents(); return; }
+    if (this.state === 'intro' || this.state === 'shuffle') {
+      // 모두 '준비 완료'를 누르면 1초 뒤 바로 시작
+      for (const p of this.players) { const I = this.inputs[p.id]; if (I && (I.rd || 0) > (this.rdCnt[p.id] || 0)) { this.rdCnt[p.id] = I.rd; if (!this.ready[p.id]) { this.ready[p.id] = true; this.emit('ready', { pid: p.id }); } } }
+      if (this.players.every(p => this.ready[p.id]) && this.stateT > 1) this.stateT = 1;
+      this.stateT -= dt; if (this.stateT <= 0) this.state = 'play'; this.pruneEvents(); return;
+    }
     if (this.state === 'vote') { this.stepVote(dt); this.pruneEvents(); return; }
     if (this.state === 'over' || this.state === 'clear') { this.pruneEvents(); return; }
     this.stepBody(dt);
@@ -547,7 +554,7 @@
     }
     this.prevRoles = this.roles;
     this.roles = best; this.syncCounts();
-    this.state = 'shuffle'; this.stateT = 6;
+    this.state = 'shuffle'; this.stateT = SHUF_T; this.ready = {};
     this.emit('shuffle', {});
   };
 
@@ -929,6 +936,7 @@
       vote: this.vote ? { id: this.vote.id, cards: this.vote.cards, t: r1(this.vote.t), votes: this.vote.votes } : null,
       boss: (() => { const q = this.enemies.find(e => e.k === 'queen'); return q ? [Math.max(0, Math.ceil(q.hp)), q.max] : null; })(),
       res: this.result,
+      ready: Object.keys(this.ready || {}), stTot: this.state === 'shuffle' ? SHUF_T : INTRO_T,
       tut: this.tut ? { on: this.tut.on, done: this.tut.done, stage: this.tut.stage, solo: this.tut.solo, cur: this.tut.cur, pause: this.tut.pause > 0 ? 1 : 0, act: this.tutActive() } : null,
     };
   };
