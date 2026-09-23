@@ -19,15 +19,24 @@
     atk: { name: '공격 정령', part: '불꽃 정령', keys: '마우스', tip: '정령을 공중 몬스터 근처로 → 자동 공격' },
     def: { name: '방어 정령', part: '땅 정령', keys: '마우스', tip: '방패를 투사체 앞에 대기' },
   };
+  // 레벨업 카드 — 대부분 '누군가의 부위'를 강화한다 → 투표가 "내 거 뽑아줘" 쟁탈전이 된다
+  // rar: common 일반 · rare 희귀 · epic 영웅 · curse 저주(강하지만 대가) / unique: 한 번만 / roles: 강화되는 부위(없으면 모두)
   const CARDS = [
-    { id: 'atk', name: '공격력 UP', desc: '모든 공격 피해 +35%' },
-    { id: 'spd', name: '이동속도 UP', desc: '걷기·달리기 +12%' },
-    { id: 'hp', name: '최대체력 UP', desc: '최대 체력 +25, 25 회복' },
-    { id: 'mana', name: '마나 회복 UP', desc: '마나 회복 +40%' },
-    { id: 'shield', name: '방어정령 크기 UP', desc: '방패 반지름 +40%' },
-    { id: 'sab', name: '마법사 달래기', desc: '사보타주 확률 -40%' },
-    { id: 'heal', name: '응급 처치', desc: '체력 50 회복' },
+    { id: 'jump2', roles: ['jump'], rar: 'epic', unique: true, name: '이단 점프', desc: '공중에서 Space를 한 번 더 — 두 번 뛴다' },
+    { id: 'slideinv', roles: ['crouch'], rar: 'rare', unique: true, name: '무적 슬라이딩', desc: '슬라이딩이 더 길고, 미끄러지는 동안 피해를 안 받는다' },
+    { id: 'sprint', roles: ['fb', 'lr'], rar: 'common', name: '질주', desc: '달리기 속도 +25%' },
+    { id: 'quake', roles: ['lh'], rar: 'rare', unique: true, name: '대지 강타', desc: '망치 범위 +50%, 맞은 개미는 1초 기절' },
+    { id: 'hammer', roles: ['lh'], rar: 'common', name: '무거운 망치', desc: '망치 피해 2배 (여왕에게도)' },
+    { id: 'split', roles: ['rh'], rar: 'rare', unique: true, name: '세 갈래 마법', desc: '마법이 부채꼴로 3발씩 나간다' },
+    { id: 'pierce', roles: ['rh'], rar: 'rare', unique: true, name: '관통 마법', desc: '마법이 적을 꿰뚫고 날아간다, 사거리 +40%' },
+    { id: 'rapid', roles: ['atk'], rar: 'rare', unique: true, name: '속사 불꽃', desc: '정령 공격 속도 2배, 사거리 +40%' },
+    { id: 'reflect', roles: ['def'], rar: 'epic', unique: true, name: '반사 방패', desc: '막은 침이 적에게 되돌아간다' },
+    { id: 'bigshield', roles: ['def'], rar: 'common', name: '큰 방패', desc: '방패 크기 +50%' },
+    { id: 'hp', roles: null, rar: 'common', name: '튼튼한 몸', desc: '최대 체력 +30, 30 회복' },
+    { id: 'heal', roles: null, rar: 'common', name: '응급 처치', desc: '체력 50 회복' },
+    { id: 'berserk', roles: null, rar: 'curse', unique: true, name: '광폭', desc: '모든 공격 피해 2배 — 대신 사보타주도 2배' },
   ];
+  const RAR_W = { common: 5, rare: 3, epic: 1.4, curse: 1 };
   // 몸 적응 훈련(튜토리얼) 과제 — 순서대로 목록에 보인다. role = 담당 역할(합동은 여러 명)
   const TUT = [
     { id: 'fb', roles: ['fb'], text: 'W/S로 앞뒤 걷기', how: 'W = 화면 오른쪽 위(계단 위쪽), S = 왼쪽 아래' },
@@ -101,7 +110,7 @@
     for (const p of this.players) { const I = this.inputs[p.id] || emptyInput(); this.pingCnt[p.id] = I.pg || 0; this.skipCnt[p.id] = I.sk || 0; this.rdCnt[p.id] = I.rd || 0; }
     const s = lv.start;
     this.body = { x: s.x, y: s.y, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, inv: 0, slide: 0, landSlide: 0, longJ: false, crouch: false, faceX: 0, faceY: -1, diagT: 0, diagDone: false, safe: [], safeT: 0 };
-    this.stats = { mhp: 100, atk: 1, spd: 1, regen: 16, defR: 10, sab: 1 };
+    this.stats = { mhp: 100, atk: 1, spd: 1, regen: 16, defR: 10, sab: 1, run: 1, lhR: 14, lhDmg: 1, stunHit: false, rhN: 1, pierce: false, rhLife: 0.42, atkCd: 0.5, atkRange: 100, reflect: false, dbl: false, slideInv: false, slideT: 0.55 };
     this.hp = 100; this.mana = 100; this.lv = 1; this.xp = 0; this.xpNeed = 12;
     this.cam = { mode: 'scroll' };
     // 무너지는 계단: 이 y보다 아래(뒤)의 계단 줄은 무너져 있다. 위로 쫓아온다
@@ -230,6 +239,7 @@
     const b = this.body;
     if (b.inv > 0 || this.state !== 'play') return false;
     if (this.tut && this.tut.on) return false; // 훈련 중엔 안 다친다
+    if (b.slide > 0 && this.stats.slideInv && cause !== 'pit' && cause !== 'edge' && cause !== 'collapse') return false; // 무적 슬라이딩
     this.hp -= a; b.inv = 0.8;
     let who;
     if (this.sab.phase === 'on') { this.blameWizard++; who = 'wizard'; }
@@ -319,7 +329,7 @@
     // 슬라이딩 = 달리기 + 앉기
     if (b.slide > 0) b.slide -= dt;
     else if (crouchEdge && grounded && b.stun <= 0 && speedNow > WALK * 1.15 * st.spd) {
-      b.slide = 0.55; b.vx *= 1.25; b.vy *= 1.25;
+      b.slide = st.slideT; b.vx *= 1.25; b.vy *= 1.25;
       this.combo('slide', ['crouch', runY ? 'fb' : 'lr']);
     }
     const wasCrouch = b.crouch;
@@ -330,7 +340,7 @@
     if (b.stun > 0) { b.vx = approach(b.vx, 0, 300 * dt); b.vy = approach(b.vy, 0, 300 * dt); }
     else if (b.slide > 0) { b.vx *= (1 - 1.2 * dt); b.vy *= (1 - 1.2 * dt); }
     else {
-      const wx = WALK * st.spd, rx = RUN * st.spd;
+      const wx = WALK * st.spd, rx = RUN * st.spd * st.run;
       let tvx = mx * (runX ? rx : wx), tvy = my * (runY ? rx : wx);
       if (mx && my) { tvx *= 0.8; tvy *= 0.8; }
       // 화면 기준 이동: W=화면 위, D=화면 오른쪽 → 쿼터뷰 세계 방향으로 돌린다 (계단은 W+D)
@@ -358,10 +368,12 @@
       }
       this.emit('jump', {});
       this.tutDone('jump');
+    } else if (jumpEdge && !grounded && st.dbl && !b.usedDbl && b.stun <= 0) {
+      b.vz = JUMPV * 0.85; b.usedDbl = true; this.emit('jump', {}); this.emit('combo', { kind: 'dbl', x: r1(b.x), y: r1(b.y) });
     }
     if (b.z > 0 || b.vz > 0) {
       b.vz -= GRAV * dt; b.z += b.vz * dt;
-      if (b.z <= 0) { b.z = 0; b.vz = 0; if (b.longJ) { b.landSlide = 0.3; b.longJ = false; } this.emit('land', {}); }
+      if (b.z <= 0) { b.z = 0; b.vz = 0; b.usedDbl = false; if (b.longJ) { b.landSlide = 0.3; b.longJ = false; } this.emit('land', {}); }
     }
     const sp = Math.hypot(b.vx, b.vy);
     if (sp > 5) { b.faceX = b.vx / sp; b.faceY = b.vy / sp; }
@@ -599,10 +611,9 @@
       if (this.cool.lh <= 0) {
         this.cool.lh = 0.28;
         const [dx, dy] = this.aim(this.inp('lh'), b.x, b.y);
-        const hx = b.x + dx * 14, hy = b.y + dy * 12;
+        const R = this.stats.lhR, hx = b.x + dx * R, hy = b.y + dy * R * 0.85;
         this.swing = { x: r1(hx), y: r1(hy), dx: r1(dx), dy: r1(dy), t: 0.15 };
         this.emit('swing', { x: r1(hx), y: r1(hy), dx: r1(dx), dy: r1(dy) });
-        const R = 14;
         for (const o of this.level.obs) {
           if (!o.alive || o.k !== 'bar') continue;
           const cx = clamp(hx, o.x0, o.x1), cy = clamp(hy, o.y0, o.y1);
@@ -628,8 +639,9 @@
         for (const e of this.enemies) {
           const d = Math.hypot(e.x - hx, e.y - hy);
           if ((e.k === 'egg' || e.k === 'crate') && d < R + 6) this.damage(e, 1, 'lh');
-          else if (e.k === 'ant' && d < R + 2) this.damage(e, 1 * this.stats.atk, 'lh');
-          else if (e.k === 'queen' && d < R + 16) this.damage(e, 2 * this.stats.atk, 'lh');
+          else if (e.k === 'ant' && d < R + 2) this.damage(e, 1 * this.stats.atk * this.stats.lhDmg, 'lh');
+          else if (e.k === 'queen' && d < R + 16) this.damage(e, 2 * this.stats.atk * this.stats.lhDmg, 'lh');
+          if (this.stats.stunHit && e.k === 'ant' && d < R + 12) e.stun = 1; // 대지 강타: 기절
         }
       }
     }
@@ -642,7 +654,8 @@
         if (this.mana >= 6) {
           this.cool.rh = 0.28; this.mana -= 6;
           const [dx, dy] = this.aim(rhI, b.x, b.y);
-          this.shots.push({ k: 'rh', x: b.x + dx * 6, y: b.y + dy * 6, vx: dx * 230, vy: dy * 230, life: 0.42, id: this.nextId++ });
+          const n = this.stats.rhN, base = Math.atan2(dy, dx);
+          for (let i = 0; i < n; i++) { const a = base + (i - (n - 1) / 2) * 0.24, ux = Math.cos(a), uy = Math.sin(a); this.shots.push({ k: 'rh', x: b.x + ux * 6, y: b.y + uy * 6, vx: ux * 230, vy: uy * 230, life: this.stats.rhLife, id: this.nextId++, hit: [] }); }
           this.emit('shoot', {});
         } else if (this.nomanaT <= 0) { this.nomanaT = 1; this.emit('nomana', {}); }
       }
@@ -659,10 +672,10 @@
     if (aI.mx !== s.lastA) { s.lastA = aI.mx; this.act('atk'); }
     if (dI.mx !== s.lastD) { s.lastD = dI.mx; this.act('def'); }
     if (this.cool.atk <= 0) {
-      let best = null, bd = 100;
+      let best = null, bd = this.stats.atkRange;
       for (const e of this.enemies) if (e.k === 'fly') { const d = Math.hypot(e.x - s.ax, e.y - e.z - s.ay); if (d < bd && (!e.tr || (d < 30 && this.tutActive().includes('atk')))) { bd = d; best = e; } } // 연습 인형은 정령을 가까이 대야 공격
       if (best && this.mana >= 4) {
-        this.cool.atk = 0.5; this.mana -= 4;
+        this.cool.atk = this.stats.atkCd; this.mana -= 4;
         const dx = best.x - s.ax, dy = (best.y - best.z) - s.ay, d = Math.hypot(dx, dy) || 1;
         this.shots.push({ k: 'sp', x: s.ax, y: s.ay, vx: dx / d * 250, vy: dy / d * 250, life: 0.9, tgt: best.id, id: this.nextId++ });
         this.emit('spshoot', {});
@@ -704,7 +717,14 @@
         if (e.dead) continue;
         if (s.k === 'rh' && (e.k === 'ant' || e.k === 'queen')) {
           const r = e.k === 'queen' ? 18 : 8;
-          if (Math.hypot(e.x - s.x, e.y - s.y) < r) { this.damage(e, 1 * this.stats.atk, 'rh'); s.dead = true; this.emit('poof', { x: r1(s.x), y: r1(s.y) }); break; }
+          if (Math.hypot(e.x - s.x, e.y - s.y) < r && !(s.hit && s.hit.includes(e.id))) {
+            this.damage(e, 1 * this.stats.atk, 'rh'); this.emit('poof', { x: r1(s.x), y: r1(s.y) });
+            if (this.stats.pierce && s.hit) { s.hit.push(e.id); continue; } // 관통 마법: 계속 날아감
+            s.dead = true; break;
+          }
+        }
+        if (s.k === 'rf' && (e.k === 'ant' || e.k === 'queen' || e.k === 'fly')) {
+          if (Math.hypot(e.x - s.x, (e.y - (e.z || 0)) - s.y) < (e.k === 'queen' ? 20 : 10)) { this.damage(e, 1.5 * this.stats.atk, 'def'); s.dead = true; this.emit('poof', { x: r1(s.x), y: r1(s.y) }); break; }
         }
         if (s.k === 'sp' && e.k === 'fly') {
           if (Math.hypot(e.x - s.x, (e.y - e.z) - s.y) < 9) { this.damage(e, 1 * this.stats.atk, 'atk'); s.dead = true; this.emit('poof', { x: r1(s.x), y: r1(s.y) }); break; }
@@ -721,6 +741,7 @@
         const pid = this.roles.def; if (this.pstats[pid]) this.pstats[pid].blocks++;
         this.emit('block', { x: r1(s.x), y: r1(s.y) });
         this.solve('block', ['def']);
+        if (this.stats.reflect) this.shots.push({ k: 'rf', x: s.x, y: s.y, vx: -s.vx * 2.4, vy: -s.vy * 2.4, life: 1.2, id: this.nextId++ }); // 반사 방패
         if (this.inp('def').mx != null) this.tutDone('def'); // 마우스로 직접 옮겨 막았을 때만 인정
         continue;
       }
@@ -750,6 +771,7 @@
         }
         continue;
       }
+      if (e.k === 'ant' && e.stun > 0) { e.stun -= dt; continue; } // 기절: 안 움직이고 안 문다
       if (e.k === 'ant') {
         const dx = b.x - e.x, dy = b.y - e.y, d = Math.hypot(dx, dy) || 1;
         if (e.hit > 0) { e.hit -= dt; const nx = e.x + e.kx * dt, ny = e.y + e.ky * dt; if (this.walkable(nx, e.y)) e.x = nx; if (this.walkable(e.x, ny)) e.y = ny; }
@@ -883,7 +905,15 @@
 
   // ---------- 레벨업 투표 ----------
   P.startVote = function () {
-    const cards = shuffle(CARDS.slice()).slice(0, 3).map(c => c.id);
+    // 등급 가중치로 3장 (한 번만 되는 카드는 다시 안 나옴, 저주는 최대 1장, 체력이 낮으면 회복 카드가 잘 나옴)
+    const pool = CARDS.filter(c => !(c.unique && this.pick[c.id]));
+    const cards = [];
+    while (cards.length < 3 && pool.length) {
+      const w = pool.map(c => RAR_W[c.rar] * (c.id === 'heal' && this.hp < this.stats.mhp * 0.5 ? 3 : 1) * (c.rar === 'curse' && cards.some(id => CARDS.find(q => q.id === id).rar === 'curse') ? 0 : 1));
+      let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0;
+      while (r > w[i] && i < w.length - 1) { r -= w[i]; i++; }
+      cards.push(pool[i].id); pool.splice(i, 1);
+    }
     this.vote = { id: ++this.voteSeq, cards, t: 12, votes: {} };
     this.state = 'vote';
     this.emit('vote', {});
@@ -915,13 +945,21 @@
   };
   P.applyCard = function (id) {
     const s = this.stats;
-    if (id === 'atk') s.atk *= 1.35;
-    else if (id === 'spd') s.spd *= 1.12;
-    else if (id === 'hp') { s.mhp += 25; this.hp = Math.min(s.mhp, this.hp + 25); }
-    else if (id === 'mana') s.regen *= 1.4;
-    else if (id === 'shield') s.defR *= 1.4;
-    else if (id === 'sab') s.sab *= 0.6;
-    else if (id === 'heal') this.hp = Math.min(s.mhp, this.hp + 50);
+    switch (id) {
+      case 'jump2': s.dbl = true; break;
+      case 'slideinv': s.slideInv = true; s.slideT = 0.85; break;
+      case 'sprint': s.run *= 1.25; break;
+      case 'quake': s.lhR = 21; s.stunHit = true; break;
+      case 'hammer': s.lhDmg *= 2; break;
+      case 'split': s.rhN = 3; break;
+      case 'pierce': s.pierce = true; s.rhLife = 0.6; break;
+      case 'rapid': s.atkCd = 0.25; s.atkRange = 140; break;
+      case 'reflect': s.reflect = true; break;
+      case 'bigshield': s.defR *= 1.5; break;
+      case 'hp': s.mhp += 30; this.hp = Math.min(s.mhp, this.hp + 30); break;
+      case 'heal': this.hp = Math.min(s.mhp, this.hp + 50); break;
+      case 'berserk': s.atk *= 2; s.sab *= 2; break;
+    }
   };
 
   P.finish = function (kind) {

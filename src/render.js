@@ -103,7 +103,7 @@
       case 'poof': add(ev.x, ev.y, 4, '#7fe3ff', 20, 0.25, false, 10); break;
       case 'hurt': this.shake = Math.max(this.shake, 3); this.flash = 0.25; pop('-' + ev.a, ev.x, ev.y, '#ff6b6b'); break;
       case 'land': if (s) add(s.b[0], s.b[1], 4, '#6b6190', 18, 0.3, false, 1); break;
-      case 'combo': pop({ diag: '대각선!', long: '멀리뛰기!', slide: '슬라이딩!' }[ev.kind], ev.x, ev.y, '#ffe27a', true); break;
+      case 'combo': pop({ diag: '대각선!', long: '멀리뛰기!', slide: '슬라이딩!', dbl: '이단 점프!' }[ev.kind], ev.x, ev.y, '#ffe27a', true); break;
       case 'hatch': add(ev.x, ev.y, 8, '#efe3c8', 35, 0.4, true, 4); break;
       case 'enrage': this.shake = 5; break;
       case 'fall': add(ev.x, ev.y, 8, '#cdb8ff', 25, 0.5, false, 4); break;

@@ -433,8 +433,13 @@
       const counts = [0, 0, 0]; for (const id in v.votes) counts[v.votes[id]]++;
       const myVote = myIn.vk === v.id ? myIn.vi : -1;
       key = 'vote' + v.id + counts.join() + myVote + Math.ceil(v.t);
-      html = `<p class="mt">레벨 업! LV${s.lv}</p><p class="ms">몸은 하나, 카드도 하나. 다 같이 투표하세요. (동률이면 덜 뽑힌 카드)</p><div class="cards">` +
-        v.cards.map((id, i) => { const c = CARDS.find(c => c.id === id); return `<button class="card${myVote === i ? ' mine' : ''}" data-v="${i}"><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cv">${'■'.repeat(counts[i])}${'□'.repeat(Math.max(0, s.players.length - counts[i]))}</div></button>`; }).join('') +
+      const RAR = { common: '일반', rare: '희귀', epic: '영웅', curse: '저주' };
+      const who = c => {
+        if (!c.roles) return '<span class="who" style="border-color:#a39bc4;color:#ece8ff">모두</span>';
+        return c.roles.map(r => { const pid = s.roles[r], pl = s.players.find(p => p.id === pid) || { name: '?', col: 0 }; return `<span class="who" style="border-color:${PCOL[pl.col || 0]};color:${PCOL[pl.col || 0]}">${ROLE_INFO[r].part} · ${pid === myId ? '나' : esc(pl.name)}</span>`; }).join(' ');
+      };
+      html = `<p class="mt">레벨 업! LV${s.lv} — 누구를 강화할까?</p><p class="ms">몸은 하나, 카드도 하나. 다 같이 투표하세요. (동률이면 덜 뽑힌 카드)</p><div class="cards">` +
+        v.cards.map((id, i) => { const c = CARDS.find(c => c.id === id); return `<button class="card ${c.rar}${myVote === i ? ' mine' : ''}" data-v="${i}"><div class="rar">${RAR[c.rar]}</div><div class="cn">${c.name}</div>${who(c)}<div class="cd">${c.desc}</div><div class="cv">${'■'.repeat(counts[i])}${'□'.repeat(Math.max(0, s.players.length - counts[i]))}</div></button>`; }).join('') +
         `</div><div class="count">${Math.ceil(v.t)}초 남음 · ${Object.keys(v.votes).length}/${s.players.length}명 투표</div>`;
     } else if ((s.st === 'over' || s.st === 'clear') && s.res) {
       const r = s.res;
