@@ -248,11 +248,12 @@
     spshoot: () => beep(700, 1100, 0.07, 'triangle', 0.04), break: () => { beep(160, 50, 0.18, 'sawtooth', 0.07); beep(90, 40, 0.2, 'square', 0.04); },
     kill: () => beep(500, 120, 0.12, 'square', 0.05), hurt: () => beep(200, 60, 0.25, 'sawtooth', 0.09), block: () => beep(1200, 1500, 0.06, 'triangle', 0.05),
     combo: () => { beep(660, 660, 0.07); setTimeout(() => beep(990, 990, 0.1), 70); }, vote: () => { beep(523, 523, 0.08); setTimeout(() => beep(659, 659, 0.08), 90); setTimeout(() => beep(784, 784, 0.14), 180); },
-    sabwarn: () => { beep(300, 150, 0.4, 'sawtooth', 0.06); }, fall: () => beep(600, 80, 0.4, 'triangle', 0.07),
+    sabwarn: () => { beep(300, 150, 0.4, 'sawtooth', 0.06); },
+    rock: () => { beep(110, 40, 0.22, 'square', 0.07); }, trap: () => beep(1500, 1100, 0.08, 'triangle', 0.03), fall: () => beep(600, 80, 0.4, 'triangle', 0.07),
   };
 
   // ---------------- 이벤트 → 화면 알림 ----------------
-  const CAUSE = { pit: '구덩이에 빠짐', edge: '다리에서 떨어짐', bar: '바리케이드에 쾅', beam: '들보에 머리 쿵', collapse: '무너지는 계단에 휩쓸림', ant: '개미에게 물림', shot: '침에 맞음', queen: '여왕에게 들이받힘', log: '통나무에 깔림', barrel: '나무 상자에 치임' };
+  const CAUSE = { pit: '구덩이에 빠짐', edge: '다리에서 떨어짐', bar: '바리케이드에 쾅', beam: '들보에 머리 쿵', collapse: '무너지는 계단에 휩쓸림', ant: '개미에게 물림', shot: '침에 맞음', queen: '여왕에게 들이받힘', log: '통나무에 깔림', barrel: '나무 상자에 치임', rock: '떨어진 돌에 맞음', wave: '충격파에 휩쓸림', blade: '칼날에 베임' };
   const HINT = {
     bar: ['lh', '장애물! 좌클릭 망치로 부숴!'], pit: ['jump', '구덩이! 스페이스로 점프!'], pit3: ['jump', '넓은 구덩이! 달리면서(Shift) 점프해야 넘어요'],
     beam: ['crouch', '낮은 들보! C로 숙이기 — 달리면서 C는 슬라이딩'], ant: ['rh', '개미 병정! 우클릭 마법으로 처치'],
@@ -261,6 +262,9 @@
     collapse: ['fb', '아래 계단이 무너진다! 계속 위로 올라가요'],
     log: ['lh', '통나무가 굴러온다! 좌클릭으로 부수거나 점프로 넘어요'],
     barrel: ['lr', '나무 상자가 미끄러져 온다! 좌우로 피해요'],
+    rock: ['lr', '천장에서 돌이 떨어진다! 붉은 그림자 밖으로 비켜요'],
+    wave: ['jump', '바닥 충격파! 퍼지는 고리가 닿기 직전에 스페이스로 점프'],
+    blade: ['crouch', '머리 높이 칼날! 붉은 점선이 보이면 C로 숙여요'],
   };
   let lastSeq = 0, hintQ = [], hintT = 0, bannerT = 0;
   const solvedAt = {};

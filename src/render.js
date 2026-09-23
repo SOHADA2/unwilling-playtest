@@ -204,13 +204,14 @@
       case 'hatch': add(ev.x, ev.y, 8, '#efe3c8', 35, 0.4, true, 4); break;
       case 'enrage': this.shake = 5; break;
       case 'fall': add(ev.x, ev.y, 8, '#cdb8ff', 25, 0.5, false, 4); break;
+      case 'rock': add(ev.x, ev.y, 10, '#9a93b2', 45, 0.6, true, 4); this.shake = Math.max(this.shake, 2.5); this.rings.push({ x: ev.x, y: ev.y, t: 0.3, life: 0.3, col: '200,190,230', r: 18 }); break;
       case 'rollfall': add(ev.x, ev.y, 6, '#8a5a2b', 30, 0.5, true, 4); break;
       case 'collapse': this.shake = 3; break;
       case 'ping': { const pl = s && s.players.find(p => p.id === ev.pid); if (pl) { this.bubbles = this.bubbles.filter(b => b.pid !== ev.pid); this.bubbles.push({ pid: ev.pid, text: pl.name + ': ' + PINGS[ev.k], col: PCOL[pl.col || 0], t: 1.8 }); } break; }
       case 'hic': this.shake = Math.max(this.shake, 1.5); break;
       case 'solve': {
         const pl = s && s.players.find(p => p.id === ev.pids[0]); if (!pl) break;
-        const col = PCOL[pl.col || 0], LBL = { beam: '머리 숙이기 성공!', pit: '점프 성공!', bar: '부쉈다!', log: '통나무 박살!', logjump: '통나무 뛰어넘기!', dodge: '피했다!', crate: '부쉈다!', ant: '처치!', fly: '격추!', block: '막았다!' };
+        const col = PCOL[pl.col || 0], LBL = { beam: '머리 숙이기 성공!', pit: '점프 성공!', bar: '부쉈다!', log: '통나무 박살!', logjump: '통나무 뛰어넘기!', dodge: '피했다!', wave: '충격파 뛰어넘기!', duck: '칼날 밑으로 숙이기!', crate: '부쉈다!', ant: '처치!', fly: '격추!', block: '막았다!' };
         const big = !['ant', 'fly', 'block', 'crate'].includes(ev.k);
         const names = ev.pids.map(id => (s.players.find(p => p.id === id) || {}).name).join('+');
         const stack = this.pops.filter(p => p.t > 0.9).length; // 동시에 여러 개면 위로 쌓기
@@ -286,6 +287,8 @@
       this.poly(sp, 'rgba(255,40,60,' + pulse.toFixed(2) + ')');
       x.strokeStyle = 'rgba(255,90,90,0.8)'; x.lineWidth = 1; x.beginPath(); sp.forEach((q, i) => i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1])); x.closePath(); x.stroke();
     }
+    // 움직임 함정 예고 (바닥에 그림) — 돌 그림자 · 충격파 룬/고리 · 칼날 궤적
+    this.trapsGround(s.tp || [], now, list);
     // 문 창살
     lv.rooms.forEach((room, i) => {
       const st = s.dr[i] || 0;
@@ -742,6 +745,68 @@
     const a = this.P(x0, y - 5 + ph * 1.6, e + 9), b = this.P(x1, y - 5 + ph * 1.6, e + 9);
     this.x.strokeStyle = '#6b431f'; this.x.lineWidth = 1; this.x.beginPath(); this.x.moveTo(a[0], a[1] + 0.5); this.x.lineTo(b[0], b[1] + 0.5); this.x.stroke();
     if (last) { const c = this.P(x1, y, e + 5); this.x.fillStyle = '#d9a766'; this.x.fillRect(c[0] - 2, c[1] - 3, 4, 5); this.x.fillStyle = '#8a5a2b'; this.x.fillRect(c[0] - 1, c[1] - 1, 2, 1); }
+  };
+  // ---------- 움직임 함정 ----------
+  // tp: [id, k, x, y, 지난 시간, 예고 시간, …] — wave: r(고리 반지름) · blade: sx, sy, dx, dy, len
+  P.trapsGround = function (tps, now, list) {
+    const x = this.x, lv = this.lv;
+    const open = (px, py) => { const t = lv.rows[Math.floor(py / T)] && lv.rows[Math.floor(py / T)][Math.floor(px / T)]; return t && t !== '#' && t !== 'o'; };
+    for (const t of tps) {
+      const [id, k, tx, ty, tt, warn] = t, pre = tt < warn, kk = Math.min(1, tt / warn);
+      if (k === 'rock') {
+        // 그림자가 점점 커지고 붉은 테두리가 빨라진다 → 쿵
+        const e = this.hAt(tx, ty), q = this.P(tx, ty, e), r = 3 + kk * 9, blink = 0.45 + 0.4 * Math.sin(now * (10 + kk * 20));
+        x.fillStyle = 'rgba(255,40,40,' + (0.12 + kk * 0.2).toFixed(2) + ')'; x.beginPath(); x.ellipse(q[0], q[1], 16, 8, 0, 0, Math.PI * 2); x.fill();
+        x.fillStyle = 'rgba(0,0,0,' + (0.3 + kk * 0.4).toFixed(2) + ')'; x.beginPath(); x.ellipse(q[0], q[1], r * 1.4, r * 0.7, 0, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = 'rgba(255,90,70,' + blink.toFixed(2) + ')'; x.lineWidth = 2; x.beginPath(); x.ellipse(q[0], q[1], 16, 8, 0, 0, Math.PI * 2); x.stroke();
+        const z = 130 * (1 - kk * kk); // 위에서 가속하며 떨어짐
+        { const rq = this.P(tx, ty, e + z + 4); this.lights.push({ x: rq[0], y: rq[1], r: 20, c: 'rgba(255,120,90,0.14)' }); }
+        list.push({ d: tx + ty + 1, f: () => { this.box(tx - 4, ty - 4, tx + 4, ty + 4, e + z, 7, '#9a93b2', '#645d78', '#4d475e'); const c = this.P(tx - 1, ty - 1, e + z + 7); x.fillStyle = '#c3bdd6'; x.fillRect(c[0] - 1, c[1], 3, 1); } });
+      } else if (k === 'wave') {
+        const e = this.hAt(tx, ty), q = this.P(tx, ty, e);
+        // 룬 (예고 동안 붉게 차오름, 터진 뒤엔 희미하게)
+        x.strokeStyle = pre ? 'rgba(255,' + Math.round(170 - kk * 120) + ',60,' + (0.5 + 0.5 * Math.sin(now * 18)).toFixed(2) + ')' : 'rgba(255,140,60,0.35)';
+        x.lineWidth = 1; x.beginPath(); x.ellipse(q[0], q[1], 14, 7, 0, 0, Math.PI * 2); x.stroke();
+        x.beginPath(); x.ellipse(q[0], q[1], 8, 4, 0, 0, Math.PI * 2); x.stroke();
+        if (pre) { x.fillStyle = 'rgba(255,100,40,' + (kk * 0.45).toFixed(2) + ')'; x.beginPath(); x.ellipse(q[0], q[1], 14 * kk, 7 * kk, 0, 0, Math.PI * 2); x.fill(); continue; }
+        // 바닥을 타고 퍼지는 고리 — 칸 높이를 따라 그려서 계단 단을 넘는 게 보인다
+        const r = t[6], n = Math.max(24, Math.round(r * 0.9));
+        this.lights.push({ x: q[0], y: q[1], r: 30 + r, c: 'rgba(255,120,50,0.08)' });
+        x.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < n; i++) {
+          const a = i / n * Math.PI * 2, px = tx + Math.cos(a) * r, py = ty + Math.sin(a) * r;
+          if (!open(px, py)) continue;
+          const p = this.P(px, py, this.hAt(px, py));
+          x.fillStyle = 'rgba(255,150,60,0.9)'; x.fillRect(p[0] - 1, p[1] - 3, 2, 4);
+          x.fillStyle = 'rgba(255,230,160,0.9)'; x.fillRect(p[0], p[1] - 2, 1, 2);
+        }
+        x.globalCompositeOperation = 'source-over';
+      } else if (k === 'blade') {
+        const [, , , , , , sx, sy, dx, dy, len] = t;
+        // 궤적 (예고 동안 깜빡이는 붉은 점선, 날아가는 동안은 희미하게)
+        const a = pre ? 0.55 + 0.45 * (Math.floor(now * 10) % 2) : 0.3;
+        x.fillStyle = 'rgba(255,60,110,' + a.toFixed(2) + ')';
+        for (let d = 0; d < len; d += 4) { const px = sx + dx * d, py = sy + dy * d; if (!open(px, py)) continue; const p = this.P(px, py, this.hAt(px, py)); x.fillRect(p[0] - 1, p[1] - 1, 3, 2); }
+        // 쏘는 룬석
+        { const e = this.hAt(sx, sy), p = this.P(sx, sy, e); x.fillStyle = '#1a1426'; x.fillRect(p[0] - 4, p[1] - 16, 9, 16); x.fillStyle = '#4a4262'; x.fillRect(p[0] - 3, p[1] - 15, 7, 14); x.fillStyle = pre && Math.floor(now * 10) % 2 ? '#ffd0e6' : '#ff5a8a'; x.fillRect(p[0] - 2, p[1] - 13, 5, 5); if (pre) this.lights.push({ x: p[0], y: p[1] - 10, r: 22, c: 'rgba(255,80,140,0.2)' }); }
+        if (pre) continue;
+        const e = this.hAt(tx, ty);
+        this.shadow(tx, ty, e, 4, 14);
+        list.push({ d: tx + ty + 3, f: () => this.blade(tx, ty, e + 14, now, dx, dy) });
+      }
+    }
+  };
+  // 머리 높이에서 회전하며 날아오는 마력 칼날
+  P.blade = function (wx, wy, z, now, dx, dy) {
+    const x = this.x, q = this.P(wx, wy, z), a = now * 22;
+    this.lights.push({ x: q[0], y: q[1], r: 26, c: 'rgba(255,80,140,0.18)' });
+    const tq = this.P(wx - dx * 14, wy - dy * 14, z); // 잔상
+    x.strokeStyle = 'rgba(255,120,170,0.35)'; x.lineWidth = 2; x.beginPath(); x.moveTo(tq[0], tq[1]); x.lineTo(q[0], q[1]); x.stroke();
+    x.strokeStyle = '#1a1426'; x.lineWidth = 3; x.beginPath();
+    for (let i = 0; i < 2; i++) { const b = a + i * Math.PI / 2; x.moveTo(q[0] - Math.cos(b) * 6, q[1] - Math.sin(b) * 3); x.lineTo(q[0] + Math.cos(b) * 6, q[1] + Math.sin(b) * 3); }
+    x.stroke();
+    x.strokeStyle = '#ffd0e6'; x.lineWidth = 1; x.stroke();
+    x.fillStyle = '#ff5a8a'; x.fillRect(q[0] - 1, q[1] - 1, 3, 3);
   };
   P.barrel = function (wx, wy, e, rot) {
     this.box(wx - 6, wy - 6, wx + 6, wy + 6, e, 12, '#b07a3f', '#8a5a2b', '#6b431f');

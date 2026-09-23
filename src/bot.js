@@ -66,6 +66,11 @@
       tx = c * T + 8; ty = r * T + 8;
       // 굴러오는 술통은 옆으로 피한다
       for (const o of g.rollers) if (o.k === 'barrel' && b.y - o.y > -4 && b.y - o.y < 60 && Math.abs(o.x - b.x) < 18) tx = b.x + (b.x >= o.x ? 30 : -30);
+      // 떨어지는 돌 그림자는 옆으로 비킨다 (가던 방향의 옆쪽)
+      for (const t of g.traps || []) if (t.k === 'rock') {
+        const d = Math.hypot(b.x - t.x, b.y - t.y);
+        if (d < 24 && t.t > t.warn - 0.6) { const fx = tx - b.x, fy = ty - b.y, l = Math.hypot(fx, fy) || 1, sg = ((b.x - t.x) * -fy + (b.y - t.y) * fx) >= 0 ? 1 : -1; tx = b.x - fy / l * sg * 40; ty = b.y + fx / l * sg * 40; }
+      }
     }
     const dx = tx - b.x, dy = ty - b.y;
     if (dx < -4) k.a = true; else if (dx > 4) k.d = true;
@@ -84,6 +89,17 @@
       const soon = near(b.x + ux * 20, b.y + uy * 20) || near(b.x + ux * 10, b.y + uy * 10) || near(b.x, b.y);
       if (o.k === 'beam' && soon) { if (!I._c) I.cc++; k.c = true; }
       if (o.k === 'bar' && soon) this.barAim = [b.x + ux * 30, b.y + uy * 30]; // 조준은 맨 마지막에 (적 조준이 덮어쓰지 않게)
+    }
+    // 함정: 충격파 고리가 닿기 직전엔 점프, 칼날이 다가오면 숙이기
+    for (const t of g.traps || []) {
+      if (t.k === 'wave' && b.z <= 0 && this.jumpCd <= 0) {
+        const d = Math.hypot(b.x - t.x, b.y - t.y);
+        if ((t.t >= t.warn && d - t.r > 3 && d - t.r < 20) || (t.t > t.warn - 0.1 && t.t < t.warn && d < 8)) { I.cj++; this.jumpCd = 0.4; }
+      }
+      if (t.k === 'blade' && t.t >= t.warn - 0.2) {
+        const rx = b.x - t.x, ry = b.y - t.y, along = rx * t.dx + ry * t.dy, side = Math.abs(rx * -t.dy + ry * t.dx);
+        if (along > -4 && along < 40 && side < 14) { if (!I._c) I.cc++; k.c = true; }
+      }
     }
     I._c = k.c;
     // 굴러오는 통나무는 망치로

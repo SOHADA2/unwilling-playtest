@@ -118,6 +118,7 @@
     for (const room of lv.rooms) { room.entryD = this.doorDist(room.bottomRow); room.exitD = this.doorDist(room.topRow); }
     this.rollers = []; this.rollHint = {};
     for (const r of lv.rollers) r.t = 0.5;
+    this.traps = []; this.trapHint = {}; this.dirT = null; // 움직임 역할용 함정 (계단 압박 조율기가 깔아 준다)
     this.roomIdx = 0;
     this.enemies = []; this.shots = []; this.eshots = []; this.nextId = 1;
     this.cool = { lh: 0, rh: 0, atk: 0 };
@@ -277,6 +278,7 @@
     this.stepBody(dt);
     this.stepCamera(dt);
     this.stepRollers(dt);
+    this.stepTraps(dt);
     this.stepSpawns();
     this.stepDirector(dt);
     this.stepAttacks(dt);
@@ -547,13 +549,81 @@
   P.stepDirector = function (dt) {
     if (this.state !== 'play' || this.cam.mode !== 'scroll' || (this.tut && this.tut.on) || this.col.delay > 0) return;
     const room = this.level.rooms[this.roomIdx]; if (room && room.active) return;
-    const dr = this.dirT || (this.dirT = { fly: 3, ant: 5, spit: 7 });
+    const dr = this.dirT || (this.dirT = { fly: 3, ant: 5, spit: 7, rock: 2, wave: 3.5, blade: 6 });
     const bd = this.bodyDist(), n = this.players.length, free = this.enemies.filter(e => e.room == null && !e.tr);
     const cnt = k => free.filter(e => e.k === k).length;
     for (const k in dr) dr[k] -= dt;
     if (dr.fly <= 0) { dr.fly = rnd(5, 7.5); if (cnt('fly') < (n >= 3 ? 2 : 1) + 1) { const p = this.pathSpot(bd + 6, bd + 10); if (p) this.newEnemy('fly', p[0], p[1] - 20, null); } }
     if (dr.ant <= 0) { dr.ant = rnd(6, 9); if (cnt('ant') < 3) { const p = this.pathSpot(bd + 8, bd + 12); if (p) for (let i = 0; i < 2; i++) this.newEnemy('ant', p[0] + rnd(-6, 6), p[1] + rnd(-6, 6), null); } }
     if (dr.spit <= 0) { dr.spit = rnd(8, 12); if (cnt('spit') < 1) { const p = this.pathSpot(bd + 11, bd + 15); if (p) this.newEnemy('spit', p[0], p[1], null); } }
+    // 움직임 역할도 몰아친다: 떨어지는 돌 → 좌우(앞뒤)로 비키기 · 바닥 충격파 → 점프 · 머리 높이 칼날 → 앉기
+    const has = k => this.traps.some(t => t.k === k), sl = this.roomIdx === 0 ? 1.3 : 1; // 첫 계단은 조금 느슨하게 (익히는 구간)
+    if (dr.rock <= 0) { dr.rock = rnd(3.5, 5.5) * sl; if (!has('rock')) this.dropRocks(); }
+    // 충격파는 몸 앞 길에서 터진다 — 몸이 그쪽으로 가는 중이라 고리와 마주친다 (고리는 몸이 있던 곳 너머까지 퍼짐)
+    if (dr.wave <= 0) { dr.wave = rnd(5, 7) * sl; if (!has('wave')) { const p = this.pathSpot(bd + 7, bd + 10); if (p) this.addTrap({ k: 'wave', x: p[0], y: p[1], warn: 0.7, r: 0, R: Math.hypot(p[0] - this.body.x, p[1] - this.body.y) + 40 }); } }
+    if (dr.blade <= 0) { dr.blade = rnd(5.5, 8) * sl; if (!has('blade')) this.throwBlade(); }
+  };
+
+  // ---------- 움직임 역할 함정 ----------
+  P.addTrap = function (t) {
+    t.id = this.nextId++; t.t = 0; this.traps.push(t);
+    this.emit('trap', { k: t.k });
+    if (!this.trapHint[t.k]) { this.trapHint[t.k] = 1; this.emit('hint', { k: t.k }); }
+    return t;
+  };
+  // 떨어지는 돌: 몸이 곧 있을 자리(+주변)에 그림자 → 1초 뒤 쿵. 비키면 좌우(또는 앞뒤) 담당의 해결
+  P.dropRocks = function () {
+    const b = this.body, n = 1 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.25 ? 1 : 0), W0 = 1.05;
+    for (let i = 0; i < n; i++) {
+      const w = W0 + i * 0.3;
+      let x = b.x + b.vx * w + (i ? rnd(-30, 30) : 0), y = b.y + b.vy * w + (i ? rnd(-30, 30) : 0);
+      if (!this.walkable(x, y) || this.collapsedAt(x, y)) { if (i) continue; x = b.x; y = b.y; }
+      this.addTrap({ k: 'rock', x, y, warn: w, threat: false });
+    }
+  };
+  // 머리 높이 마력 칼날: 앞쪽 길의 룬에서 몸이 도착할 자리를 겨눠 날아온다. 붉은 선 예고 → 숙이면(앉기) 머리 위로 지나감
+  P.throwBlade = function () {
+    const b = this.body, bd = this.bodyDist(), p = this.pathSpot(bd + 6, bd + 9); if (!p) return;
+    const warn = 0.8, sp = 170;
+    let tx = b.x, ty = b.y;
+    for (let i = 0; i < 3; i++) { const ta = warn + Math.hypot(tx - p[0], ty - p[1]) / sp; tx = b.x + b.vx * ta; ty = b.y + b.vy * ta; } // 도착 시각 예측을 몇 번 다듬음
+    const L = Math.hypot(tx - p[0], ty - p[1]) || 1, dx = (tx - p[0]) / L, dy = (ty - p[1]) / L;
+    this.addTrap({ k: 'blade', sx: p[0], sy: p[1], dx, dy, len: L + 70, sp, x: p[0], y: p[1], warn });
+  };
+  P.stepTraps = function (dt) {
+    const b = this.body;
+    for (const t of this.traps) {
+      t.t += dt;
+      if (t.k === 'rock') {
+        const d = Math.hypot(b.x - t.x, b.y - t.y);
+        if (d < 11) t.threat = true; // 떨어질 자리 안에 있었다가 빠져나가야 '피했다'
+        if (t.t < t.warn) continue;
+        t.dead = true; this.emit('rock', { x: r1(t.x), y: r1(t.y) });
+        if (d < 11 && b.z < 12) { if (this.hurt(5, 'lr', 'rock')) this.knock(d ? (b.x - t.x) / d : 0, d ? (b.y - t.y) / d : 1, 110); }
+        else if (t.threat && d < 48) { const la = r => this.lastAct[r] == null ? -99 : this.lastAct[r]; this.solve('dodge', [la('lr') >= la('fb') ? 'lr' : 'fb']); }
+        continue;
+      }
+      if (t.t < t.warn) continue;
+      if (t.k === 'wave') {
+        // 바닥을 타고 퍼지는 고리 — 닿을 때 공중에 있으면 성공
+        t.r = (t.t - t.warn) * 110;
+        if (t.r > t.R) { t.dead = true; continue; }
+        const d = Math.hypot(b.x - t.x, b.y - t.y);
+        if (!t.hit && !t.done && Math.abs(d - t.r) < 5) {
+          if (b.z < 3) { t.hit = true; if (this.hurt(5, 'jump', 'wave')) this.knock(d ? (b.x - t.x) / d : 0, d ? (b.y - t.y) / d : 1, 100); }
+          else { t.done = true; this.solve('wave', ['jump']); }
+        }
+      } else if (t.k === 'blade') {
+        const s = (t.t - t.warn) * t.sp;
+        if (s > t.len) { t.dead = true; continue; }
+        t.x = t.sx + t.dx * s; t.y = t.sy + t.dy * s;
+        if (!t.hit && !t.done && Math.hypot(b.x - t.x, b.y - t.y) < 9 && b.z < 16) {
+          if (!b.crouch) { t.hit = true; if (this.hurt(5, 'crouch', 'blade')) this.knock(t.dx, t.dy, 90); }
+          else { t.done = true; this.solve('duck', ['crouch']); }
+        }
+      }
+    }
+    this.traps = this.traps.filter(t => !t.dead);
   };
   P.randomRoomSpot = function (room, minD) {
     const b = this.body;
@@ -576,7 +646,7 @@
     if (!room.active && !room.cleared) {
       if (b.y + 6 < room.bottomRow * T) {
         room.active = true; room.bottomLocked = true; this.cam.mode = 'room'; this.col.on = false;
-        this.rollers = [];
+        this.rollers = []; this.traps = [];
         // 계단에 남은 적은 정리
         this.enemies = this.enemies.filter(e => e.room != null);
         this.eshots = [];
@@ -1024,6 +1094,9 @@
       gen: this.gen, st: this.state, stT: r1(this.stateT), time: r1(this.time),
       ct: this.camTarget(),
       col: r1(this.col.d),
+      tp: this.traps.map(t => t.k === 'wave' ? [t.id, t.k, r1(t.x), r1(t.y), r1(t.t), t.warn, r1(t.r)]
+        : t.k === 'blade' ? [t.id, t.k, r1(t.x), r1(t.y), r1(t.t), t.warn, r1(t.sx), r1(t.sy), r1(t.dx), r1(t.dy), t.len]
+        : [t.id, t.k, r1(t.x), r1(t.y), r1(t.t), t.warn]),
       ro: this.rollers.map(o => [o.id, o.k, r1(o.x), r1(o.y), r1(o.rot), o.k === 'log' ? r1(o.x0) : 0, o.k === 'log' ? r1(o.x1) : 0]),
       b: [r1(b.x), r1(b.y), r1(b.z), b.crouch ? 1 : 0, b.slide > 0 ? 1 : 0, b.inv > 0 ? 1 : 0, r1(b.faceX), r1(b.vx)],
       hp: Math.ceil(this.hp), mhp: this.stats.mhp, mp: Math.floor(this.mana), lv: this.lv, xp: this.xp, xpn: this.xpNeed,
