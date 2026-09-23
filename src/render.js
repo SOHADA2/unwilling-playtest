@@ -33,6 +33,9 @@
     '..KKKKKKKKKK..',
     '...KBK..KBK...',
   ];
+  // 마법사 16x22 프레임 (음영 3단계 · 숨쉬기 · 걷기 2프레임 · 점프 · 앉기) — 오른쪽을 본다
+  const MAGE = {"idle": ["..........KK....", ".........KhK....", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "...KLRRRRRRrK...", "..KLRRMMRRRrrK..", "..KLRMRRRMRrrK..", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "...KPPK..KPPK...", "...KBbbK.KBbbK..", "...KKKKK.KKKKK.."], "idleB": ["...........KK...", "..........KhK...", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "...KLRRRRRRrK...", "..KLRRMMRRRrrK..", "..KLRMRRRMRrrK..", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "...KPPK..KPPK...", "...KBbbK.KBbbK..", "...KKKKK.KKKKK.."], "walkA": ["..........KK....", ".........KhK....", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "...KLRRRRRRrK...", "..KLRRMMRRRrrK..", "..KLRMRRRMRrrK..", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "..KPPK....KPPK..", "..KBbbK...KBbbK.", "..KKKKK...KKKKK."], "walkB": ["...........KK...", "..........KhK...", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "...KLRRRRRRrK...", "..KLRRMMRRRrrK..", "..KLRMRRRMRrrK..", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "....KPPKKPPK....", "....KBbKKBbbK...", "....KKKKKKKKK..."], "air": ["..........KK....", ".........KhK....", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "...KLRRRRRRrK...", "..KLRRMMRRRrrK..", "..KLRMRRRMRrrK..", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "....KBbKKBbK....", "....KKKKKKKK...."], "crouch": ["..........KK....", ".........KhK....", "........KHhK....", ".......KIHhK....", "......KIYHhK....", ".....KIHHyhhK...", "....KIHYHHHhK...", "..KKKKKKKKKKKKK.", "..KhHHHHHHHHhhK.", "...KKSSSSSSKK...", "....KSSSESSEK...", "....KsSSSSSSK...", "..KGGGGGGYGGGK..", "..KLRRMMMRRrrK..", ".KLRRRRRRRRrrrK.", ".KKKKKKKKKKKKKK.", "...KBbbKKBbbK...", "...KKKKKKKKKK..."]};
+  const MAGE_PAL = {"K": "#1a1426", "I": "#5f8cf5", "H": "#3565d8", "h": "#2447a8", "Y": "#f6c945", "y": "#c8961a", "S": "#f4c9a3", "s": "#d9a07e", "E": "#1a1426", "L": "#4c6ee0", "R": "#3553c4", "r": "#243a92", "M": "#8fc0ff", "G": "#c89a3a", "P": "#2a3470", "B": "#5b3a22", "b": "#7a5230"};
   const SHIELD = ['KKKKK', 'KGGGK', 'KXYXK', 'KGXGK', '.KGK.', '..K..'];
   const ANT = [
     '..K....K..',
@@ -57,6 +60,8 @@
     this.x.imageSmoothingEnabled = false;
     this.spr = {
       wiz: sprite(WIZ, PAL), shield: sprite(SHIELD, PAL),
+      mage: Object.fromEntries(Object.entries(MAGE).map(([k, m]) => [k, sprite(m, MAGE_PAL)])),
+      mageHit: Object.fromEntries(Object.entries(MAGE).map(([k, m]) => [k, sprite(m, Object.assign({}, MAGE_PAL, { H: '#ffffff', I: '#ffffff', h: '#ffd0d0', R: '#ffffff', L: '#ffffff', r: '#ffd0d0' }))])),
       ant: sprite(ANT, PAL), antHit: sprite(ANT, Object.assign({}, PAL, { a: '#ffffff', A: '#ffe0e0' })),
     };
     this.gen = -1; this.fx = []; this.pops = []; this.shake = 0; this.flash = 0;
@@ -193,17 +198,17 @@
     if (this.prevBX != null) { const dsx = (bp[0] - bp[1]) - this.prevBX; if (dsx < -0.3) this.faceL = true; else if (dsx > 0.3) this.faceL = false; }
     this.prevBX = bp[0] - bp[1];
     const be = this.hAt(bp[1]);
-    this.shadow(bp[0], bp[1], be, 9, bp[2]);
+    this.shadow(bp[0], bp[1], be, 6, bp[2]);
     list.push({ d: bp[0] + bp[1], f: () => this.wizard(bp, b, s, now, be) });
     // 적
     for (const en of s.e) {
       const p = this.sm('e' + en[0], en[2], en[3], en[4], k);
       const e = this.hAt(p[1]);
-      this.shadow(p[0], p[1], e, en[1] === 'queen' ? 24 : 8, p[2]);
+      this.shadow(p[0], p[1], e, en[1] === 'queen' ? 20 : 6, p[2]);
       list.push({ d: p[0] + p[1] + (en[1] === 'fly' ? 40 : 0), f: () => this.enemy(en[1], p, en, now, e) });
     }
     list.sort((a, c) => a.d - c.d).forEach(o => o.f());
-    this.lights.push({ x: this.P(bp[0], bp[1], be + bp[2] + 40)[0] + (this.faceL ? -9 : 9), y: this.P(bp[0], bp[1], be + bp[2] + 40)[1], r: 115, c: 'rgba(110,150,255,0.10)' });
+    this.lights.push({ x: this.P(bp[0], bp[1], be + bp[2] + 20)[0] + (this.faceL ? -7 : 7), y: this.P(bp[0], bp[1], be + bp[2] + 20)[1], r: 105, c: 'rgba(110,150,255,0.10)' });
 
     // 정령
     const sp = s.sp;
@@ -303,7 +308,7 @@
   };
   P.drawBubbles = function (bp, be, dt) {
     const x = this.x; this.bubbles = this.bubbles.filter(b => (b.t -= dt) > 0);
-    const q = this.P(bp[0], bp[1], be + bp[2] + 56);
+    const q = this.P(bp[0], bp[1], be + bp[2] + 32);
     x.font = '11px "Galmuri11", "Galmuri9", monospace'; x.textAlign = 'center';
     this.bubbles.forEach((b, i) => {
       const w = x.measureText(b.text).width + 10, yy = q[1] - i * 16 - 6;
@@ -531,22 +536,36 @@
   };
 
   // ---------- 캐릭터 ----------
-  // 마법사: 부위별 그림(wizard.js). 누른 부위는 그 사람 색으로 빛난다
+  // 마법사 (16x22 프레임 그림). 걷기·숨쉬기·점프·앉기 + 방패 내지르기·지팡이 빛
   P.wizard = function (p, b, s, now, e) {
     const x = this.x;
-    const inv = b[5], crouch = b[3], slide = b[4];
+    const inv = b[5], crouch = b[3], slide = b[4], faceL = this.faceL;
     if (inv && Math.floor(now * 14) % 2 && s.st === 'play') return;
-    const moving = Math.abs(b[7]) > 5 || Math.abs(this.lastBY - p[1]) > 0.3;
+    const moving = Math.abs(b[7]) > 5 || Math.abs((this.lastBY || 0) - p[1]) > 0.3;
     this.lastBY = p[1];
-    const q = this.P(p[0], p[1], e + p[2]);
-    const col = r => { const pl = s.players.find(pp => pp.id === s.roles[r]); return PCOL[pl ? pl.col || 0 : 0]; };
-    const hl = {};
-    for (const r of ['fb', 'lr', 'jump', 'crouch', 'lh', 'rh']) if (s.act[r] < 0.3) hl[r] = col(r);
-    const lhA = s.act.lh < 0.2 ? 1 - s.act.lh / 0.2 : 0, rhA = s.act.rh < 0.25 ? 1 - s.act.rh / 0.25 : 0;
-    const an = G.TUS_DRAW_WIZ(x, q[0], q[1], 1, { faceL: this.faceL, walk: moving && p[2] <= 0 ? (now * 2.2) % 1 : null, crouch, slide, air: p[2] > 1, lh: lhA, rh: rhA, hl });
-    if (rhA > 0) this.lights.push({ x: an.rh[0], y: an.rh[1], r: 34, c: 'rgba(120,200,255,0.3)' });
-    if (slide) { x.fillStyle = 'rgba(255,255,255,0.6)'; const d = this.faceL ? 1 : -1; x.fillRect(q[0] + d * 14, q[1] - 4, 5, 1); x.fillRect(q[0] + d * 17, q[1] - 8, 5, 1); }
-    if (s.sab[0] === 'on') { x.fillStyle = '#c77dff'; x.fillRect(an.top[0] - 1, an.top[1] - 6 - (Math.floor(now * 6) % 2), 3, 3); }
+    const q = this.P(p[0], p[1], e + p[2]), X = q[0], Y = q[1];
+    const f = crouch || slide ? 'crouch' : p[2] > 1 ? 'air' : moving ? (Math.floor(now * 8) % 2 ? 'walkA' : 'walkB') : (Math.floor(now * 1.6) % 2 ? 'idle' : 'idleB');
+    const img = (b[5] && s.st === 'play' ? this.spr.mageHit : this.spr.mage)[f];
+    const h = img.height, lh = s.act.lh < 0.2 ? 1 - s.act.lh / 0.2 : 0, rh = s.act.rh < 0.25 ? 1 - s.act.rh / 0.25 : 0;
+    x.save();
+    if (faceL) { x.translate(X, 0); x.scale(-1, 1); x.translate(-X, 0); }
+    // 지팡이 (오른손 · 뒤쪽): 시전하면 살짝 들어 올리고 끝이 빛남
+    if (!slide) {
+      const sx = X + 6, top = Y - h - 3 - Math.round(rh * 3);
+      x.fillStyle = '#1a1426'; x.fillRect(sx - 1, top + 3, 3, h - 2);
+      x.fillStyle = '#a9aec0'; x.fillRect(sx, top + 4, 1, h - 4);
+      x.fillStyle = '#1a1426'; x.fillRect(sx - 3, top - 3, 7, 7);
+      x.fillStyle = '#e04a4a'; x.fillRect(sx - 2, top - 2, 5, 5);
+      x.fillStyle = '#ffffff'; x.fillRect(sx - 1, top - 1, 1, 1); x.fillRect(sx, top, 2, 1); x.fillRect(sx + 1, top + 1, 1, 1);
+      if (rh > 0) { x.fillStyle = 'rgba(160,230,255,' + (rh * 0.8).toFixed(2) + ')'; x.fillRect(sx - 3, top - 3, 7, 7); }
+    }
+    x.drawImage(img, X - 8, Y - h);
+    // 방패 (왼손 · 앞쪽): 망치질하면 앞으로 내지름
+    x.drawImage(this.spr.shield, X - 11 + Math.round(lh * 5), Y - h + (crouch ? 9 : 11) - Math.round(lh * 2));
+    if (slide) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillRect(X - 13, Y - 3, 4, 1); x.fillRect(X - 15, Y - 6, 4, 1); }
+    x.restore();
+    if (rh > 0) this.lights.push({ x: X + (faceL ? -6 : 6), y: Y - h - 3, r: 30, c: 'rgba(120,200,255,0.3)' });
+    if (s.sab[0] === 'on') { x.fillStyle = '#c77dff'; x.fillRect(X - 1, Y - h - 6 - (Math.floor(now * 6) % 2), 2, 2); }
   };
 
   P.enemy = function (kind, p, en, now, e) {
@@ -570,19 +589,19 @@
       return;
     }
     if (kind === 'ant') {
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 10, Y - 14 + (Math.floor(now * 10 + en[0]) % 2), 20, 14);
+      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10 + (Math.floor(now * 10 + en[0]) % 2), 15, 10);
     } else if (kind === 'fly') {
       const flap = Math.floor(now * 16 + en[0]) % 2;
       x.fillStyle = 'rgba(217,236,255,0.8)';
-      x.fillRect(X - 17, Y - 18 - flap * 3, 11, 4); x.fillRect(X + 6, Y - 18 - flap * 3, 11, 4);
-      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 10, Y - 14, 20, 14);
+      x.fillRect(X - 13, Y - 14 - flap * 2, 8, 3); x.fillRect(X + 5, Y - 14 - flap * 2, 8, 3);
+      x.drawImage(hit ? this.spr.antHit : this.spr.ant, X - 7, Y - 10, 15, 10);
     } else if (kind === 'egg') {
       const t = en[6], pulse = t < 2 ? (Math.floor(now * 8) % 2) : 0;
       x.fillStyle = '#1a1426'; x.beginPath(); x.ellipse(X, Y - 5, 6 + pulse, 7 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = hit ? '#ffffff' : '#efe3c8'; x.beginPath(); x.ellipse(X, Y - 5, 5 + pulse, 6 + pulse, 0, 0, Math.PI * 2); x.fill();
       x.fillStyle = '#c9a97a'; x.fillRect(X - 2, Y - 8, 1, 4); x.fillRect(X + 1, Y - 6, 1, 3);
     } else if (kind === 'queen') {
-      x.save(); x.translate(X, Y); x.scale(1.6, 1.6); x.translate(-X, -Y);
+      x.save(); x.translate(X, Y); x.scale(1.3, 1.3); x.translate(-X, -Y);
       const act = en[6];
       const tele = act === 'tele' && Math.floor(now * 12) % 2;
       const o = '#1a1426', body = hit ? '#ffffff' : '#7a2418', light = hit ? '#ffe0e0' : '#a8392a';
