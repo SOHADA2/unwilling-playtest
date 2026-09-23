@@ -75,6 +75,15 @@ kbd{display:inline-block;background:#0f0c1a;border:1px solid var(--line);border-
 #h-tut .row.done .ck{color:var(--green)}
 #h-tut .row.me:not(.done){color:var(--ink)}
 #h-tut .row .who{margin-left:auto;flex:none;color:#7f78a3;font-size:10px}
+#h-tut .row>*{flex:none}
+#h-tut .row>span:nth-child(2){flex:1}
+#h-tut .row.stage{color:var(--gold);margin-top:2px}
+#h-tut .row.task{padding-left:8px}
+#h-tut .row.lock{color:#4f4868}
+#h-tut .row.now:not(.done){color:#fff}
+#h-tut .row.now:not(.done) .ck{color:var(--gold)}
+#h-task.good{border-color:var(--green)}
+#h-task.good .l1{color:var(--green)}
 #h-tut .row.me:not(.done) .who{color:var(--ice)}
 #h-task{left:50%;bottom:10px;transform:translateX(-50%);background:rgba(13,11,22,.92);border:2px solid var(--ice);padding:8px 14px;text-align:center;max-width:92%}
 #h-task .l1{font-family:"Galmuri14",monospace;font-size:15px;color:#fff}

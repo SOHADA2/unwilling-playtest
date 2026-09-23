@@ -329,7 +329,7 @@
   // 튜토리얼 안내: 내 담당 표적 위 화살표 + 이동 방향 나침반
   P.guides = function (s, bp, be, now, opt) {
     if (!s.tut || !s.tut.on || !opt.myId) return;
-    const x = this.x, mine = r => s.roles[r] === opt.myId && !s.tut.done[r];
+    const x = this.x, act = s.tut.act || [], mine = r => s.roles[r] === opt.myId && act.includes(r);
     const bob = Math.round(Math.sin(now * 6) * 2);
     x.font = '10px "Galmuri11", "Galmuri9", monospace'; x.textAlign = 'center';
     const label = (qx, qy, text) => { const w = x.measureText(text).width + 6; x.fillStyle = 'rgba(13,11,22,0.85)'; x.fillRect(qx - w / 2, qy - 9, w, 12); x.fillStyle = '#ffe27a'; x.fillText(text, qx, qy); };
@@ -345,8 +345,9 @@
     }
     // 쿼터뷰에서 W/A/S/D가 어느 쪽인지
     const dirs = [];
-    if (s.roles.fb === opt.myId) dirs.push(['W', 0, -30], ['S', 0, 30]);
-    if (s.roles.lr === opt.myId) dirs.push(['A', -30, 0], ['D', 30, 0]);
+    const moveNow = r => act.includes(r) || act.includes('diag') || (r === 'fb' && act.includes('long'));
+    if (s.roles.fb === opt.myId && moveNow('fb')) dirs.push(['W', 0, -30], ['S', 0, 30]);
+    if (s.roles.lr === opt.myId && moveNow('lr')) dirs.push(['A', -30, 0], ['D', 30, 0]);
     const c0 = this.P(bp[0], bp[1], be + 2);
     for (const [k, dx, dy] of dirs) {
       const q = this.P(bp[0] + dx, bp[1] + dy, be + 2);

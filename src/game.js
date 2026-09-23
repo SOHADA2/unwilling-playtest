@@ -48,6 +48,13 @@
     swap: { name: '영혼 뒤바뀜 — 두 사람 역할이 잠깐 바뀜', dur: 5, lines: ['너희 둘, 자리 바꿔 봐라!', '헷갈려 봐라, 이 침입자들!'] },
   };
   const SAB_LINES = SAB_KIND.rev.lines;
+  // 훈련 단계: 단계 안에서는 (여럿이면) 각자 동시에, 혼자면 한 과제씩 순서대로
+  const TUT_STAGES = [
+    { title: '1단계 · 몸 움직이기', ids: ['fb', 'lr', 'jump', 'crouch'] },
+    { title: '2단계 · 손과 정령 쓰기', ids: ['lh', 'rh', 'atk', 'def'] },
+    { title: '3단계 · 같이 맞추기', ids: ['diag', 'long'] },
+  ];
+  const TUT_ORDER = TUT_STAGES.flatMap(g => g.ids);
   const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
   const PROLOGUE_LEN = 26; // prologue.js 의 LEN 과 같게
 
@@ -115,13 +122,8 @@
     // 몸 적응 훈련: 켜져 있으면 출발 지점에 연습 표적을 놓고, 다 끝낼 때까지 계단이 안 무너지고 다치지 않는다
     this.tut = null;
     if (this.opts.tutorial) {
-      this.tut = { on: true, done: {}, walk: { fb: 0, lr: 0 } };
+      this.tut = { on: true, done: {}, walk: { fb: 0, lr: 0 }, stage: 0, cur: 0, pause: 0, solo: this.players.length === 1 };
       this.col.on = false;
-      const tr = (k, x, y) => { const e = this.newEnemy(k, x, y, null); e.tr = true; e.hp = k === 'rune' ? 1e9 : 1; if (k === 'fly') { e.z = 20; e.shootT = 1e9; } return e; };
-      tr('crate', s.x - 64, s.y - 44);
-      tr('ant', s.x + 64, s.y - 44);
-      tr('fly', s.x + 8, s.y - 58);
-      const rn = tr('rune', s.x + 84, s.y + 12); rn.shootT = 2;
     }
     this.roles = assignRoles(this.players.map(p => p.id));
     this.syncCounts();
@@ -153,11 +155,39 @@
   };
   P.setInput = function (id, data) { if (this.inputs[id] !== undefined || this.players.some(p => p.id === id)) this.inputs[id] = data; };
   P.act = function (r) { this.lastAct[r] = this.time; };
+  // 지금 인정되는 과제 (혼자면 한 개, 여럿이면 현재 단계의 남은 것)
+  P.tutActive = function () {
+    const t = this.tut;
+    if (!t || !t.on || t.pause > 0) return [];
+    if (t.solo) return [TUT_ORDER[t.cur]];
+    return TUT_STAGES[t.stage].ids.filter(id => !t.done[id]);
+  };
+  P.spawnDummies = function () {
+    const s = this.level.start;
+    const tr = (k, x, y) => { const e = this.newEnemy(k, x, y, null); e.tr = true; e.hp = k === 'rune' ? 1e9 : 1; if (k === 'fly') { e.z = 20; e.shootT = 1e9; } return e; };
+    tr('crate', s.x - 64, s.y - 44);
+    tr('ant', s.x + 64, s.y - 44);
+    tr('fly', s.x + 8, s.y - 58);
+    const rn = tr('rune', s.x + 84, s.y + 12); rn.shootT = 1.5;
+    this.emit('dummies', {});
+  };
+  P.stepTut = function (dt) {
+    const t = this.tut; if (!t || !t.on || t.pause <= 0) return;
+    t.pause -= dt;
+    if (t.pause <= 0 && t.stage === 1 && !this.enemies.some(e => e.tr)) this.spawnDummies();
+  };
   P.tutDone = function (id) {
     const t = this.tut;
-    if (!t || !t.on || t.done[id]) return;
+    if (!t || !t.on || t.done[id] || !this.tutActive().includes(id)) return;
     t.done[id] = true;
     this.emit('tutstep', { id });
+    if (t.solo) t.cur++;
+    // 단계가 끝나면 잠깐 쉬고("잘했어요!") 다음 단계
+    if (TUT_STAGES[t.stage].ids.every(q => t.done[q]) && t.stage < TUT_STAGES.length - 1) {
+      t.stage++; t.pause = 1.6; t.walk = { fb: 0, lr: 0 };
+      if (t.stage === 2) { this.enemies = this.enemies.filter(e => !e.tr); this.eshots = []; } // 합동 단계엔 표적 치움
+      this.emit('tutstage', { stage: t.stage });
+    }
     if (TUT.every(q => t.done[q.id])) {
       t.on = false;
       this.enemies = this.enemies.filter(e => !e.tr);
@@ -232,6 +262,7 @@
     this.stepSab(dt);
     this.stepRooms(dt);
     this.stepHints();
+    this.stepTut(dt);
     this.mana = Math.min(100, this.mana + this.stats.regen * dt);
     if (this.hp <= 0) { this.hp = 0; this.finish('over'); }
     else if (this.state === 'play' && this.xp >= this.xpNeed) {
@@ -260,8 +291,9 @@
     if (mx) this.act('lr');
     if (this.tut && this.tut.on) {
       const w = this.tut.walk;
-      if (my) { w.fb += dt; if (w.fb > 0.5) this.tutDone('fb'); }
-      if (mx) { w.lr += dt; if (w.lr > 0.5) this.tutDone('lr'); }
+      const act = this.tutActive();
+      if (my && act.includes('fb')) { w.fb += dt; if (w.fb > 0.5) this.tutDone('fb'); }
+      if (mx && act.includes('lr')) { w.lr += dt; if (w.lr > 0.5) this.tutDone('lr'); }
     }
     const runY = !!fbI.k.sh && my !== 0, runX = !!lrI.k.sh && mx !== 0;
     if (this.sab.phase === 'on' && this.sab.kind === 'rev') { mx = -mx; my = -my; }
@@ -595,7 +627,7 @@
     if (dI.mx !== s.lastD) { s.lastD = dI.mx; this.act('def'); }
     if (this.cool.atk <= 0) {
       let best = null, bd = 100;
-      for (const e of this.enemies) if (e.k === 'fly') { const d = Math.hypot(e.x - s.ax, e.y - e.z - s.ay); if (d < bd && (!e.tr || d < 30)) { bd = d; best = e; } } // 연습 인형은 정령을 가까이 대야 공격
+      for (const e of this.enemies) if (e.k === 'fly') { const d = Math.hypot(e.x - s.ax, e.y - e.z - s.ay); if (d < bd && (!e.tr || (d < 30 && this.tutActive().includes('atk')))) { bd = d; best = e; } } // 연습 인형은 정령을 가까이 대야 공격
       if (best && this.mana >= 4) {
         this.cool.atk = 0.5; this.mana -= 4;
         const dx = best.x - s.ax, dy = (best.y - best.z) - s.ay, d = Math.hypot(dx, dy) || 1;
@@ -605,8 +637,10 @@
     }
   };
 
+  const DUMMY_TASK = { crate: 'lh', ant: 'rh', fly: 'atk', rune: 'def' };
   P.damage = function (e, dmg, role) {
     if (e.dead) return;
+    if (e.tr && !this.tutActive().includes(DUMMY_TASK[e.k])) return; // 연습 표적은 자기 차례일 때만 맞는다
     e.hp -= dmg; e.flash = 0.12;
     if (e.k === 'ant') { const b = this.body; const dx = e.x - b.x, dy = e.y - b.y, d = Math.hypot(dx, dy) || 1; e.hit = 0.15; e.kx = dx / d * 120; e.ky = dy / d * 120; }
     if (e.hp <= 0) {
@@ -674,7 +708,7 @@
       if (e.flash > 0) e.flash -= dt;
       if (e.tr) {
         // 연습 표적: 안 움직이고 안 문다. 룬석만 약한 침을 쏜다 (방패 연습용)
-        if (e.k === 'rune' && this.tut && this.tut.on && !this.tut.done.def) {
+        if (e.k === 'rune' && this.tut && this.tut.on && this.tutActive().includes('def')) {
           e.shootT -= dt;
           if (e.shootT <= 0) { e.shootT = 2.2; const dx = b.x - e.x, dy = (b.y - 6) - (e.y - 12), d = Math.hypot(dx, dy) || 1; this.eshots.push({ x: e.x, y: e.y - 12, vx: dx / d * 50, vy: dy / d * 50, life: 5, id: this.nextId++ }); }
         }
@@ -895,9 +929,9 @@
       vote: this.vote ? { id: this.vote.id, cards: this.vote.cards, t: r1(this.vote.t), votes: this.vote.votes } : null,
       boss: (() => { const q = this.enemies.find(e => e.k === 'queen'); return q ? [Math.max(0, Math.ceil(q.hp)), q.max] : null; })(),
       res: this.result,
-      tut: this.tut ? { on: this.tut.on, done: this.tut.done } : null,
+      tut: this.tut ? { on: this.tut.on, done: this.tut.done, stage: this.tut.stage, solo: this.tut.solo, cur: this.tut.cur, pause: this.tut.pause > 0 ? 1 : 0, act: this.tutActive() } : null,
     };
   };
 
-  G.TUS = { SAB_KIND, PINGS, PROLOGUE_LEN, TUT, Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
+  G.TUS = { TUT_STAGES, TUT_ORDER, SAB_KIND, PINGS, PROLOGUE_LEN, TUT, Game, assignRoles, ROLES, MOVE, ATK, ROLE_INFO, CARDS, SAB_LINES, T, VW, VH, DT, emptyInput };
 })(typeof window !== 'undefined' ? window : globalThis);

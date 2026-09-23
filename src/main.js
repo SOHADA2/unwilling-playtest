@@ -1,7 +1,7 @@
 // 화면 흐름 · 입력 · 네트워크 연결 · HUD
 (function () {
   'use strict';
-  const { Game, ROLE_INFO, ROLES, CARDS, SAB_KIND, PINGS, PROLOGUE_LEN, DT, emptyInput, VW, VH, TUT } = window.TUS;
+  const { TUT_STAGES, TUT_ORDER, Game, ROLE_INFO, ROLES, CARDS, SAB_KIND, PINGS, PROLOGUE_LEN, DT, emptyInput, VW, VH, TUT } = window.TUS;
   const PCOL = ['#ff7a7a', '#6db8ff', '#7be08a', '#ffd257']; // 플레이어 색 (render.js 와 같게)
   const $ = id => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
@@ -282,6 +282,7 @@
         case 'sabswap': toast(`영혼 뒤바뀜! ${nameOf(ev.a)} ↔ ${nameOf(ev.b)} 역할이 잠깐 바뀜`, 'wiz'); break;
         case 'ping': beep(ev.k === 2 ? 300 : 700, ev.k === 2 ? 200 : 900, 0.08, 'square', 0.04); break;
         case 'tutstep': { const q = TUT.find(q => q.id === ev.id); if (q) toast('✓ ' + q.text + ' — ' + tutWho(q, s), 'good'); SFX.combo(); break; }
+        case 'tutstage': banner(TUT_STAGES[ev.stage].title, ev.stage === 1 ? '연습용 표적이 나타났어요' : '두 사람이 타이밍을 맞춰야 해요', 1.6); SFX.vote(); break;
         case 'tutdone': banner('훈련 끝!', '아래 계단이 곧 무너진다 — 바리케이드를 부수고 위로!', 3.5); SFX.vote(); break;
       }
     }
@@ -293,23 +294,29 @@
     const t = s.tut, on = !!(t && t.on && s.st === 'play');
     $('h-tut').hidden = !on; $('h-task').hidden = !on;
     if (!on) return;
-    const key = JSON.stringify(t.done) + JSON.stringify(s.roles);
+    const key = JSON.stringify(t.done) + JSON.stringify(s.roles) + t.stage + t.pause + JSON.stringify(t.act);
     setIf('tut', key, () => {
+      const Q = id => TUT.find(q => q.id === id);
       const n = TUT.filter(q => t.done[q.id]).length;
-      $('h-tut').innerHTML = `<div class="tt"><span>몸 적응 훈련</span><span>${n}/${TUT.length}</span></div>` + TUT.map(q => {
-        const me = q.roles.some(r => s.roles[r] === myId);
-        return `<div class="row${t.done[q.id] ? ' done' : ''}${me ? ' me' : ''}"><span class="ck">${t.done[q.id] ? '✓' : '·'}</span><span>${esc(q.text)}</span><span class="who">${esc(tutWho(q, s))}</span></div>`;
-      }).join('');
-      // 내 할 일: 내가 맡은 과제 중 아직 안 한 첫 번째
-      const mine = TUT.find(q => !t.done[q.id] && q.roles.some(r => s.roles[r] === myId));
-      if (mine) {
-        $('h-task').className = 'hud';
-        $('h-task').innerHTML = `<div class="l1">내 할 일: ${esc(mine.text)}</div><div class="l2">${esc(mine.how)}</div>`;
-      } else {
-        const rest = TUT.filter(q => !t.done[q.id]).map(q => esc(tutWho(q, s)) + ': ' + esc(q.text)).slice(0, 2).join(' · ');
-        $('h-task').className = 'hud wait';
-        $('h-task').innerHTML = `<div class="l1">내 과제 끝! 친구들을 기다리는 중</div><div class="l2">${rest}</div>`;
-      }
+      // 지난 단계는 한 줄로 접고, 지금 단계만 펼치고, 다음 단계는 잠금
+      let rows = '';
+      TUT_STAGES.forEach((g, gi) => {
+        if (gi < t.stage) rows += `<div class="row done"><span class="ck">✓</span><span>${esc(g.title)}</span></div>`;
+        else if (gi > t.stage) rows += `<div class="row lock"><span class="ck">·</span><span>${esc(g.title)}</span><span class="who">잠김</span></div>`;
+        else {
+          rows += `<div class="row stage"><span>${esc(g.title)}</span></div>`;
+          for (const id of g.ids) {
+            const q = Q(id), me = q.roles.some(r => s.roles[r] === myId), now = t.act.includes(id);
+            rows += `<div class="row task${t.done[id] ? ' done' : ''}${me ? ' me' : ''}${now ? ' now' : ''}"><span class="ck">${t.done[id] ? '✓' : now ? '▶' : '·'}</span><span>${esc(q.text)}</span><span class="who">${esc(tutWho(q, s))}</span></div>`;
+          }
+        }
+      });
+      $('h-tut').innerHTML = `<div class="tt"><span>몸 적응 훈련</span><span>${n}/${TUT.length}</span></div>` + rows;
+      const card = (cls, l1, l2) => { $('h-task').className = 'hud' + (cls ? ' ' + cls : ''); $('h-task').innerHTML = `<div class="l1">${l1}</div><div class="l2">${l2}</div>`; };
+      if (t.pause) { card('good', '잘했어요!', '다음: ' + esc(TUT_STAGES[t.stage].title)); return; }
+      const mine = t.act.map(Q).find(q => q.roles.some(r => s.roles[r] === myId));
+      if (mine) card('', `${t.solo ? (t.cur + 1) + '/' + TUT.length + ' · ' : '내 할 일: '}${esc(mine.text)}`, esc(mine.how));
+      else card('wait', '내 과제 끝! 친구들을 기다리는 중', t.act.map(Q).map(q => esc(tutWho(q, s)) + ': ' + esc(q.text)).slice(0, 2).join(' · '));
     });
   }
 
