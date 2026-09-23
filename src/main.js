@@ -1,0 +1,321 @@
+// 화면 흐름 · 입력 · 네트워크 연결 · HUD
+(function () {
+  'use strict';
+  const { Game, ROLE_INFO, ROLES, CARDS, SAB_LINES, DT, emptyInput, VW, VH } = window.TUS;
+  const $ = id => document.getElementById(id);
+  const qs = new URLSearchParams(location.search);
+  const MODE = qs.has('local') ? 'local' : 'peer';
+  const DEMO = qs.has('demo');
+
+  let myId = null, isHost = false, net = null, game = null, snap = null, lobby = [], opts = { sabotage: true, shuffle: true };
+  let level = window.TUS_LEVEL.build();
+  const rend = new window.TUS_RENDER($('cv'));
+  const myIn = emptyInput();
+  const bot = DEMO && !qs.has('nobot') ? new window.TUS_BOT() : null;
+
+  $('t-mode').innerHTML = MODE === 'local'
+    ? '<b>같은 PC 시험 모드</b> — 창을 여러 개 띄워 나란히 두세요(탭은 뒤로 가면 멈춰요).'
+    : '같은 PC에서 창 여러 개로 시험하려면 주소 끝에 <kbd>?local</kbd>';
+  try { $('nm').value = localStorage.getItem('tus-name') || ''; } catch (e) { }
+
+  function show(id) { for (const s of ['title', 'room', 'play']) $(s).hidden = s !== id; if (id === 'play') fit(); }
+  function myName() {
+    const n = $('nm').value.trim() || ['너구리', '수달', '고슴도치', '카피바라', '미어캣'][Math.random() * 5 | 0];
+    try { localStorage.setItem('tus-name', n); } catch (e) { }
+    return n;
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const nameOf = id => { const p = (snap ? snap.players : lobby).find(p => p.id === id); return p ? p.name : '?'; };
+
+  // ---------------- 로비 ----------------
+  $('b-solo').onclick = () => { startSolo(); };
+  $('b-host').onclick = () => {
+    const name = myName();
+    const code = Array.from({ length: 4 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.random() * 23 | 0]).join('');
+    isHost = true; myId = 'host'; lobby = [{ id: 'host', name }];
+    net = new window.TUS_NET.HostNet(MODE, code, {
+      open: c => { $('r-code').textContent = c; renderLobby(); show('room'); },
+      error: m => { $('t-err').textContent = m; $('r-err').textContent = m; },
+      join: id => { },
+      leave: id => {
+        lobby = lobby.filter(p => p.id !== id);
+        if (game) game.removePlayer(id);
+        renderLobby(); pushLobby();
+      },
+      data: (id, m) => {
+        if (!m) return;
+        if (m.t === 'hello') {
+          if (game || lobby.length >= 4) { net.send(id, { t: 'reject', why: game ? '이미 게임이 시작됐어요.' : '방이 꽉 찼어요 (최대 4명).' }); return; }
+          if (!lobby.some(p => p.id === id)) lobby.push({ id, name: String(m.name || '?').slice(0, 8) });
+          net.send(id, { t: 'welcome', id });
+          renderLobby(); pushLobby();
+        } else if (m.t === 'in' && game) game.setInput(id, m.i);
+      },
+    });
+  };
+  $('b-join').onclick = () => {
+    const code = $('code-in').value.trim().toUpperCase();
+    if (code.length !== 4) { $('t-err').textContent = '방 코드 4자리를 넣어 주세요.'; return; }
+    const name = myName();
+    $('t-err').textContent = '연결 중…';
+    net = new window.TUS_NET.ClientNet(MODE, code, {
+      open: () => { net.send({ t: 'hello', name }); },
+      error: m => { $('t-err').textContent = m; },
+      close: () => { $('r-err').textContent = '방장과 연결이 끊겼어요.'; toast('방장과 연결이 끊겼어요', 'wiz'); },
+      data: m => {
+        if (!m) return;
+        if (m.t === 'welcome') { myId = m.id; $('t-err').textContent = ''; $('r-code').textContent = code; show('room'); }
+        else if (m.t === 'reject') { $('t-err').textContent = m.why; }
+        else if (m.t === 'lobby') { lobby = m.players; opts = m.opts; renderLobby(); }
+        else if (m.t === 'snap') { if (!snap || m.s.gen !== snap.gen) lastSeq = 0; snap = m.s; if ($('play').hidden) show('play'); }
+      },
+    });
+  };
+  $('code-in').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-join').click(); });
+  $('b-leave').onclick = () => location.reload();
+  $('o-sab').onchange = $('o-shuf').onchange = () => { opts = { sabotage: $('o-sab').checked, shuffle: $('o-shuf').checked }; pushLobby(); };
+  $('b-start').onclick = () => {
+    game = new Game(lobby, opts);
+    game.inputs[myId] = myIn;
+    show('play');
+  };
+  function pushLobby() { if (isHost && net) net.broadcast({ t: 'lobby', players: lobby, opts }); }
+  function renderLobby() {
+    const li = [];
+    for (let i = 0; i < 4; i++) {
+      const p = lobby[i];
+      li.push(p ? `<li><span>${esc(p.name)}${p.id === myId ? ' (나)' : ''}</span><span style="color:var(--dim)">${p.id === 'host' ? '방장' : '참가'}</span></li>` : '<li class="empty">빈자리</li>');
+    }
+    $('r-list').innerHTML = li.join('');
+    $('r-host-opts').hidden = !isHost; $('r-wait').hidden = isHost;
+    if (!isHost) $('r-wait').textContent = `방장이 시작하기를 기다리는 중… (사보타주 ${opts.sabotage ? '켬' : '끔'} · 영혼 셔플 ${opts.shuffle ? '켬' : '끔'})`;
+  }
+  function startSolo() {
+    isHost = true; myId = 'me';
+    game = new Game([{ id: 'me', name: myName() }], opts);
+    game.inputs.me = myIn;
+    if (DEMO) { if (!qs.has('intro')) game.state = 'play'; const ff = +qs.get('ff') || 0; for (let i = 0; i < ff * 60; i++) { if (bot) bot.drive(game, myIn, DT); game.step(); if (game.state === 'intro' && !qs.has('intro')) game.state = 'play'; } }
+    show('play');
+  }
+  if (DEMO) setTimeout(startSolo, 50);
+
+  // ---------------- 입력 ----------------
+  const KEYMAP = { KeyW: 'w', KeyS: 's', KeyA: 'a', KeyD: 'd', ShiftLeft: 'sh', ShiftRight: 'sh', Space: 'sp', KeyC: 'c', ArrowUp: 'w', ArrowDown: 's', ArrowLeft: 'a', ArrowRight: 'd' };
+  let mouseX = null, mouseY = null, dirty = true, lastSendT = 0;
+  const playing = () => !$('play').hidden;
+  addEventListener('keydown', e => {
+    if (e.code === 'KeyM' && document.activeElement.tagName !== 'INPUT') { toggleMute(); return; }
+    if (!playing()) return;
+    const k = KEYMAP[e.code]; if (!k) return;
+    e.preventDefault();
+    if (!myIn.k[k]) { myIn.k = Object.assign({}, myIn.k, { [k]: true }); if (k === 'sp') myIn.cj++; if (k === 'c') myIn.cc++; dirty = true; }
+    audioOn();
+  });
+  addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (!k) return; if (myIn.k[k]) { myIn.k = Object.assign({}, myIn.k, { [k]: false }); dirty = true; } });
+  addEventListener('blur', () => { myIn.k = {}; myIn.lb = myIn.rb = 0; dirty = true; });
+  const cv = $('cv');
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  addEventListener('mousedown', e => {
+    if (!playing() || e.target.closest('#modal') || e.target.id === 'mute') return;
+    if (e.button === 0) { myIn.lb = 1; myIn.cl++; }
+    if (e.button === 2) { myIn.rb = 1; myIn.cr++; }
+    dirty = true; audioOn();
+  });
+  addEventListener('mouseup', e => { if (e.button === 0) myIn.lb = 0; if (e.button === 2) myIn.rb = 0; dirty = true; });
+  addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+  function updateMouseWorld() {
+    if (mouseX == null || !snap) return;
+    const r = cv.getBoundingClientRect();
+    const w = rend.toWorld((mouseX - r.left) / r.width * VW, (mouseY - r.top) / r.height * VH, snap.b[1]);
+    const nx = Math.round(w[0] * 10) / 10, ny = Math.round(w[1] * 10) / 10;
+    if (nx !== myIn.mx || ny !== myIn.my) { myIn.mx = nx; myIn.my = ny; dirty = true; }
+  }
+  function sendInput(now) {
+    if (isHost || !net || !snap) return;
+    if (dirty && now - lastSendT > 30) { lastSendT = now; dirty = false; net.send({ t: 'in', i: myIn }); }
+  }
+
+  // ---------------- 화면 크기 ----------------
+  function fit() {
+    const teamH = $('team').offsetHeight + 16;
+    let s = Math.min(innerWidth / VW, (innerHeight - teamH) / VH);
+    if (s >= 2) s = Math.floor(s * 2) / 2;
+    $('stage').style.width = Math.floor(VW * s) + 'px';
+    $('stage').style.height = Math.floor(VH * s) + 'px';
+  }
+  addEventListener('resize', fit);
+
+  // ---------------- 소리 ----------------
+  let AC = null, muted = false;
+  try { muted = localStorage.getItem('tus-mute') === '1'; } catch (e) { }
+  function audioOn() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (AC && AC.state === 'suspended') AC.resume(); }
+  function toggleMute() { muted = !muted; try { localStorage.setItem('tus-mute', muted ? '1' : '0'); } catch (e) { } $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)'; }
+  $('mute').onclick = toggleMute; $('mute').textContent = muted ? '소리 꺼짐 (M)' : '소리 켜짐 (M)';
+  function beep(f0, f1, dur, type, vol) {
+    if (!AC || muted) return;
+    const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type || 'square'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(vol || 0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur);
+  }
+  const SFX = {
+    jump: () => beep(300, 620, 0.12), land: () => beep(120, 60, 0.06, 'triangle', 0.05), shoot: () => beep(900, 500, 0.06, 'square', 0.03),
+    spshoot: () => beep(700, 1100, 0.07, 'triangle', 0.04), break: () => { beep(160, 50, 0.18, 'sawtooth', 0.07); beep(90, 40, 0.2, 'square', 0.04); },
+    kill: () => beep(500, 120, 0.12, 'square', 0.05), hurt: () => beep(200, 60, 0.25, 'sawtooth', 0.09), block: () => beep(1200, 1500, 0.06, 'triangle', 0.05),
+    combo: () => { beep(660, 660, 0.07); setTimeout(() => beep(990, 990, 0.1), 70); }, vote: () => { beep(523, 523, 0.08); setTimeout(() => beep(659, 659, 0.08), 90); setTimeout(() => beep(784, 784, 0.14), 180); },
+    sabwarn: () => { beep(300, 150, 0.4, 'sawtooth', 0.06); }, fall: () => beep(600, 80, 0.4, 'triangle', 0.07),
+  };
+
+  // ---------------- 이벤트 → 화면 알림 ----------------
+  const CAUSE = { pit: '구덩이에 빠짐', edge: '다리에서 떨어짐', bar: '바리케이드에 쾅', beam: '들보에 머리 쿵', collapse: '무너지는 계단에 휩쓸림', ant: '개미에게 물림', shot: '침에 맞음', queen: '여왕에게 들이받힘', log: '통나무에 깔림', barrel: '나무 상자에 치임' };
+  const HINT = {
+    bar: ['lh', '장애물! 좌클릭 망치로 부숴!'], pit: ['jump', '구덩이! 스페이스로 점프!'], pit3: ['jump', '넓은 구덩이! 달리면서(Shift) 점프해야 넘어요'],
+    beam: ['crouch', '낮은 들보! C로 숙이기 — 달리면서 C는 슬라이딩'], ant: ['rh', '개미 병정! 우클릭 마법으로 처치'],
+    fly: ['atk', '날개 개미! 마우스로 불꽃 정령을 가까이 대면 자동 공격'], shot: ['def', '날아오는 침! 마우스로 땅 정령 방패를 대서 막아'],
+    bridge: ['lr', '꺾인 다리! 앞뒤 + 좌우를 동시에 눌러야 해요'],
+    collapse: ['fb', '아래 계단이 무너진다! 계속 위로 올라가요'],
+    log: ['lh', '통나무가 굴러온다! 좌클릭으로 부수거나 점프로 넘어요'],
+    barrel: ['lr', '나무 상자가 미끄러져 온다! 좌우로 피해요'],
+  };
+  let lastSeq = 0, hintQ = [], hintT = 0, bannerT = 0;
+  function toast(text, cls) {
+    const d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls;
+    const f = $('h-feed'); f.prepend(d);
+    while (f.children.length > 4) f.lastChild.remove();
+    setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 400); }, 3200);
+  }
+  function banner(text, small, sec) { $('h-banner').innerHTML = esc(text) + (small ? `<small>${esc(small)}</small>` : ''); $('h-banner').hidden = false; bannerT = sec || 2.5; }
+  function roleLabel(r) { return ROLE_INFO[r].part + '(' + ROLE_INFO[r].name + ')'; }
+  function handleEvents(s) {
+    for (const ev of s.ev) {
+      if (ev.s <= lastSeq) continue;
+      lastSeq = ev.s;
+      rend.event(ev, s);
+      if (SFX[ev.type]) SFX[ev.type]();
+      switch (ev.type) {
+        case 'hurt':
+          if (ev.who === 'wizard') toast(`${CAUSE[ev.cause]} — 마법사 탓!`, 'wiz');
+          else toast(`${CAUSE[ev.cause]} — ${ROLE_INFO[ev.role].name} 담당 ${nameOf(ev.who)} 탓`);
+          break;
+        case 'hint': hintQ.push(ev.k); break;
+        case 'combo': SFX.combo(); break;
+        case 'cleared': toast('출구가 열렸다! 위로!', 'good'); banner('출구가 열렸다!', '위쪽 문으로 올라가세요'); break;
+        case 'room': banner('소환실 앞 방', '적을 모두 쓰러뜨리면 문이 열려요'); break;
+        case 'wave': toast('적이 몰려온다!'); break;
+        case 'bossintro': banner('B3 보스 — 개미 여왕', '마법진 가루를 훔쳐 간 범인', 2.5); break;
+        case 'enrage': toast('여왕이 화났다! 더 빨라짐'); break;
+        case 'egg': toast('알 주머니! 망치(좌클릭)로 깨지 않으면 부화'); break;
+        case 'picked': { const c = CARDS.find(c => c.id === ev.id); toast(`카드 선택: ${c.name}${ev.tie ? ' (동률 → 덜 뽑힌 카드)' : ''}`, 'good'); break; }
+        case 'nomana': if (s.roles.rh === myId) toast('마나 부족!'); break;
+        case 'sabwarn': break;
+        case 'left': toast('한 명이 나갔어요. 역할을 다시 나눴어요.', 'wiz'); break;
+      }
+    }
+  }
+
+  // ---------------- HUD ----------------
+  const cache = {};
+  function setIf(key, val, fn) { if (cache[key] !== val) { cache[key] = val; fn(val); } }
+  rend.face($('face'));
+  function hud(s, dt) {
+    setIf('hp', s.hp + '/' + s.mhp, v => { $('hp-v').textContent = v; $('hp-f').style.width = (s.hp / s.mhp * 100) + '%'; });
+    setIf('mp', s.mp, v => { $('mp-v').textContent = v; $('mp-f').style.width = v + '%'; });
+    setIf('xp', s.lv + ':' + s.xp + '/' + s.xpn, () => { $('lv-v').textContent = 'LV' + s.lv; $('xp-v').textContent = s.xp + '/' + s.xpn; $('xp-f').style.width = Math.min(100, s.xp / s.xpn * 100) + '%'; });
+    setIf('boss', s.boss ? s.boss.join('/') : '', v => { $('h-boss').hidden = !s.boss; if (s.boss) $('boss-f').style.width = (s.boss[0] / s.boss[1] * 100) + '%'; });
+    // 사보타주
+    const sab = s.sab[0];
+    setIf('sab', sab + s.sab[1], () => {
+      $('h-sab').hidden = sab === 'idle';
+      $('sab-l1').textContent = '"' + SAB_LINES[s.sab[1]] + '"';
+      $('sab-l2').textContent = sab === 'warn' ? '마법사가 몸을 되찾으려 한다…' : '조작 반전! (이건 마법사 탓)';
+    });
+    // 힌트
+    if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('h-hint').hidden = true; }
+    if (hintT <= 0 && hintQ.length && s.st === 'play') {
+      const k = hintQ.shift(), h = HINT[k]; const owner = s.roles[h[0]];
+      const me = owner === myId;
+      $('h-hint').innerHTML = `<span class="who">[${esc(ROLE_INFO[h[0]].part)} · ${me ? '너야!' : esc(nameOf(owner))}]</span> ${esc(h[1])}`;
+      $('h-hint').className = 'hud' + (me ? ' me' : ''); $('h-hint').hidden = false; hintT = 3.6;
+    }
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('h-banner').hidden = true; }
+    // 팀 카드
+    const key = JSON.stringify(s.roles) + s.players.map(p => p.id).join();
+    setIf('team', key, () => {
+      $('team').innerHTML = s.players.map(p => {
+        const rs = ROLES.filter(r => s.roles[r] === p.id);
+        return `<div class="pc${p.id === myId ? ' me' : ''}"><div class="nm">${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${rs.length}개 부위</span></div><div class="chips">` +
+          rs.map(r => `<span class="chip" data-r="${r}"><i class="eye"></i>${ROLE_INFO[r].part}<kbd>${ROLE_INFO[r].keys}</kbd></span>`).join('') + '</div></div>';
+      }).join('');
+      fit();
+    });
+    for (const el of $('team').querySelectorAll('.chip')) { const on = s.act[el.dataset.r] < 0.18; if (el.classList.contains('on') !== on) el.classList.toggle('on', on); }
+    modal(s);
+  }
+
+  function modal(s) {
+    let html = '', key = '';
+    if (s.st === 'intro' || s.st === 'shuffle') {
+      const mine = ROLES.filter(r => s.roles[r] === myId);
+      key = s.st + JSON.stringify(s.roles) + Math.ceil(s.stT);
+      const title = s.st === 'intro' ? '당신이 맡은 몸 부위' : '영혼 셔플! 역할이 바뀌었다';
+      const sub = s.st === 'intro' ? '마법사의 몸에 갇혔다. 이 부위만 움직일 수 있다.' : '방을 깼더니 영혼이 뒤섞였다. 새 부위에 적응하세요.';
+      html = `<p class="mt">${title}</p><p class="ms">${sub}</p><div class="myroles">` +
+        mine.map(r => `<div class="rolecard"><i class="eye"></i><div><div class="big">${ROLE_INFO[r].part} · ${ROLE_INFO[r].name}</div><div class="tip">${ROLE_INFO[r].tip}</div></div><kbd>${ROLE_INFO[r].keys}</kbd></div>`).join('') +
+        `</div><div class="teamlist">` + s.players.filter(p => p.id !== myId).map(p => `<b>${esc(p.name)}</b>: ` + ROLES.filter(r => s.roles[r] === p.id).map(r => ROLE_INFO[r].part).join(', ')).join('<br>') +
+        `</div><div class="count">${Math.ceil(s.stT)}초 뒤 시작</div>`;
+    } else if (s.st === 'vote' && s.vote) {
+      const v = s.vote;
+      const counts = [0, 0, 0]; for (const id in v.votes) counts[v.votes[id]]++;
+      const myVote = myIn.vk === v.id ? myIn.vi : -1;
+      key = 'vote' + v.id + counts.join() + myVote + Math.ceil(v.t);
+      html = `<p class="mt">레벨 업! LV${s.lv}</p><p class="ms">몸은 하나, 카드도 하나. 다 같이 투표하세요. (동률이면 덜 뽑힌 카드)</p><div class="cards">` +
+        v.cards.map((id, i) => { const c = CARDS.find(c => c.id === id); return `<button class="card${myVote === i ? ' mine' : ''}" data-v="${i}"><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cv">${'■'.repeat(counts[i])}${'□'.repeat(Math.max(0, s.players.length - counts[i]))}</div></button>`; }).join('') +
+        `</div><div class="count">${Math.ceil(v.t)}초 남음 · ${Object.keys(v.votes).length}/${s.players.length}명 투표</div>`;
+    } else if ((s.st === 'over' || s.st === 'clear') && s.res) {
+      const r = s.res;
+      key = 'res' + s.gen + r.kind;
+      const nm = id => esc((r.rows.find(x => x.id === id) || {}).name || '?');
+      html = (r.kind === 'clear'
+        ? `<p class="mt" style="color:var(--gold)">B3 클리어!</p><p class="ms">절대마법 재료 획득: 개미가 훔쳐 간 마법가루 · ${r.time}초 · LV${r.lv}</p>`
+        : `<p class="mt" style="color:var(--red)">게임 오버</p><p class="ms">몸이 하나라 체력 0이면 끝. ${r.time}초 버팀 · LV${r.lv}</p>`) +
+        `<table class="res"><tr><th>이름</th><th>처치</th><th>부숨</th><th>막음</th><th>합동기술</th><th>니 탓</th></tr>` +
+        r.rows.map(x => `<tr><td>${esc(x.name)}</td><td>${x.kills}</td><td>${x.breaks}</td><td>${x.blocks}</td><td>${x.combos}</td><td>${x.blame}</td></tr>`).join('') + '</table>' +
+        '<div class="titles">' + (r.mvp ? `<div>MVP — ${nm(r.mvp)}</div>` : '') + (r.blamer && r.rows.length > 1 ? `<div class="b">니 탓 왕 — ${nm(r.blamer)}</div>` : '') + `<div class="w">마법사 탓 — ${r.wizard}회</div></div>` +
+        (isHost ? '<button class="btn main" id="b-again">다시 하기</button>' : '<p class="ms" style="margin-top:12px">방장이 다시 시작할 수 있어요</p>');
+    }
+    const m = $('modal');
+    if (!html) { if (!m.hidden) { m.hidden = true; cache.modal = ''; } return; }
+    if (cache.modal === key) return;
+    cache.modal = key; m.hidden = false; $('modal-box').innerHTML = html;
+    for (const b of m.querySelectorAll('.card')) b.onclick = () => { myIn.vk = s.vote.id; myIn.vi = +b.dataset.v; dirty = true; cache.modal = ''; };
+    const again = $('b-again'); if (again) again.onclick = () => { game.reset(); lastSeq = 0; cache.modal = ''; };
+  }
+
+  // ---------------- 메인 루프 ----------------
+  let acc = 0, last = performance.now(), sendT = 0;
+  function frame(now) {
+    const dt = Math.min(0.25, (now - last) / 1000); last = now;
+    if (game) {
+      if (bot && !window.__botOff) bot.drive(game, myIn, dt);
+      acc += dt;
+      let n = 0;
+      while (acc >= DT && n < 8) { game.step(); acc -= DT; n++; }
+      if (n >= 8) acc = 0;
+      const s = game.snapshot();
+      if (!snap || s.gen !== snap.gen) lastSeq = 0;
+      snap = s;
+      sendT -= dt;
+      if (net && sendT <= 0) { sendT = 0.05; net.broadcast({ t: 'snap', s }); }
+    }
+    if (snap && playing()) {
+      updateMouseWorld();
+      handleEvents(snap);
+      rend.draw(level, snap, { smooth: !isHost });
+      hud(snap, dt);
+    }
+    sendInput(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.__tus = { get game() { return game; }, get snap() { return snap; }, get net() { return net; }, get lobby() { return lobby; }, get myId() { return myId; } };
+})();
