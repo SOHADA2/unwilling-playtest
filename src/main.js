@@ -249,6 +249,7 @@
     kill: () => beep(500, 120, 0.12, 'square', 0.05), hurt: () => beep(200, 60, 0.25, 'sawtooth', 0.09), block: () => beep(1200, 1500, 0.06, 'triangle', 0.05),
     combo: () => { beep(660, 660, 0.07); setTimeout(() => beep(990, 990, 0.1), 70); }, vote: () => { beep(523, 523, 0.08); setTimeout(() => beep(659, 659, 0.08), 90); setTimeout(() => beep(784, 784, 0.14), 180); },
     sabwarn: () => { beep(300, 150, 0.4, 'sawtooth', 0.06); },
+    levelup: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, f, 0.16, 'triangle', 0.06), i * 80)); },
     rock: () => { beep(110, 40, 0.22, 'square', 0.07); }, trap: () => beep(1500, 1100, 0.08, 'triangle', 0.03), fall: () => beep(600, 80, 0.4, 'triangle', 0.07),
   };
 
@@ -266,7 +267,7 @@
     wave: ['jump', '바닥 충격파! 퍼지는 고리가 닿기 직전에 스페이스로 점프'],
     blade: ['crouch', '머리 높이 칼날! 붉은 점선이 보이면 C로 숙여요'],
   };
-  let lastSeq = 0, hintQ = [], hintT = 0, bannerT = 0;
+  let lastSeq = 0, hintQ = [], hintT = 0, hintAt = 0, bannerT = 0;
   const solvedAt = {};
   function toast(text, cls) {
     const d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls;
@@ -287,7 +288,15 @@
           if (ev.who === 'wizard') toast(`${CAUSE[ev.cause]} — 마법사 탓!`, 'wiz');
           else toast(`${CAUSE[ev.cause]} — ${ROLE_INFO[ev.role].name} 담당 ${nameOf(ev.who)} 탓`);
           break;
-        case 'hint': hintQ.push(ev.k); break;
+        case 'hint': {
+          // 다시 알림(같은 걸로 또 맞음)은 그 담당자에게만, 맨 앞에. 새 팁이 오면 이미 1.2초 넘게 본 팁은 바로 넘긴다
+          const now = performance.now();
+          if (ev.re) { if (ev.pid === myId) hintQ.unshift({ k: ev.k, at: now, re: 1 }); }
+          else hintQ.push({ k: ev.k, at: now });
+          if (hintT > 0 && now - hintAt > 1200) hintT = Math.min(hintT, 0.001);
+          break;
+        }
+        case 'levelup': banner('LEVEL UP!', '경험치가 가득 찼다 — 곧 강화 카드 투표', 1.3); SFX.levelup(); break;
         case 'combo': SFX.combo(); break;
         case 'cleared': toast('출구가 열렸다! 위로!', 'good'); banner('출구가 열렸다!', '위쪽 문으로 올라가세요'); break;
         case 'room': banner('소환실 앞 방', '적을 모두 쓰러뜨리면 문이 열려요'); break;
@@ -377,7 +386,7 @@
     subtitle(s);
     setIf('hp', s.hp + '/' + s.mhp, v => { $('hp-v').textContent = v; $('hp-f').style.width = (s.hp / s.mhp * 100) + '%'; });
     setIf('mp', s.mp, v => { $('mp-v').textContent = v; $('mp-f').style.width = v + '%'; });
-    setIf('xp', s.lv + ':' + s.xp + '/' + s.xpn, () => { $('lv-v').textContent = 'LV' + s.lv; $('xp-v').textContent = s.xp + '/' + s.xpn; $('xp-f').style.width = Math.min(100, s.xp / s.xpn * 100) + '%'; });
+    setIf('xp', s.lv + ':' + s.xp + '/' + s.xpn, () => { $('lv-v').textContent = 'LV' + s.lv; $('xp-v').textContent = s.xp + '/' + s.xpn; $('xp-f').style.width = Math.min(100, s.xp / s.xpn * 100) + '%'; $('xp-f').closest('.bar').classList.toggle('near', s.xp / s.xpn >= 0.75); });
     setIf('boss', s.boss ? s.boss.join('/') : '', v => { $('h-boss').hidden = !s.boss; if (s.boss) $('boss-f').style.width = (s.boss[0] / s.boss[1] * 100) + '%'; });
     // 사보타주
     const sab = s.sab[0];
@@ -389,11 +398,14 @@
     });
     // 힌트
     if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('h-hint').hidden = true; }
+    // 3초 넘게 밀린 팁은 이미 지나간 장애물 얘기라 버린다
+    { const now = performance.now(); hintQ = hintQ.filter(q => now - q.at < 3000); }
     if (hintT <= 0 && hintQ.length && s.st === 'play') {
-      const k = hintQ.shift(), h = HINT[k]; const owner = s.roles[h[0]];
+      const q = hintQ.shift(), h = HINT[q.k]; const owner = s.roles[h[0]];
       const me = owner === myId;
-      $('h-hint').innerHTML = `<span class="who">[${esc(ROLE_INFO[h[0]].part)} · ${me ? '너야!' : esc(nameOf(owner))}]</span> ${esc(h[1])}`;
-      $('h-hint').className = 'hud' + (me ? ' me' : ''); $('h-hint').hidden = false; hintT = 3.6;
+      // 담당자 화면엔 크게 "너야!", 다른 사람 화면엔 작게 한 줄 (누구 일인지만 알게)
+      $('h-hint').innerHTML = `<span class="who">[${esc(ROLE_INFO[h[0]].part)} · ${me ? (q.re ? '또! 너야' : '너야!') : esc(nameOf(owner))}]</span> ${esc(h[1])}`;
+      $('h-hint').className = 'hud' + (me ? ' me' : ' other'); $('h-hint').hidden = false; hintT = me ? 3.6 : 2.4; hintAt = performance.now();
     }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('h-banner').hidden = true; }
     // 팀 카드
@@ -443,7 +455,10 @@
         if (!c.roles) return '<span class="who" style="border-color:#a39bc4;color:#ece8ff">모두</span>';
         return c.roles.map(r => { const pid = s.roles[r], pl = s.players.find(p => p.id === pid) || { name: '?', col: 0 }; return `<span class="who" style="border-color:${PCOL[pl.col || 0]};color:${PCOL[pl.col || 0]}">${ROLE_INFO[r].part} · ${pid === myId ? '나' : esc(pl.name)}</span>`; }).join(' ');
       };
-      html = `<p class="mt">레벨 업! LV${s.lv} — 누구를 강화할까?</p><p class="ms">몸은 하나, 카드도 하나. 다 같이 투표하세요. (동률이면 덜 뽑힌 카드)</p><div class="cards">` +
+      const why = v.why || {}, whyTxt = [why.kill ? `처치 ${why.kill}` : '', why.break ? `부숨 ${why.break}` : ''].filter(Boolean).join(' · ');
+      html = `<p class="mt">레벨 업! LV${s.lv} — 누구를 강화할까?</p>` +
+        `<p class="why">적을 쓰러뜨리고 장애물을 부숴서 경험치가 가득 찼어요${whyTxt ? ` <b>(${whyTxt})</b>` : ''}</p>` +
+        `<p class="ms">몸 하나를 강화할 카드를 <b>다 같이 투표</b>해서 골라요 — 카드에 적힌 부위 주인이 강해져요. (동률이면 덜 뽑힌 카드)</p><div class="cards">` +
         v.cards.map((id, i) => { const c = CARDS.find(c => c.id === id); return `<button class="card ${c.rar}${myVote === i ? ' mine' : ''}" data-v="${i}"><div class="rar">${RAR[c.rar]}</div><div class="cn">${c.name}</div>${who(c)}<div class="cd">${c.desc}</div><div class="cv">${'■'.repeat(counts[i])}${'□'.repeat(Math.max(0, s.players.length - counts[i]))}</div></button>`; }).join('') +
         `</div><div class="count">${Math.ceil(v.t)}초 남음 · ${Object.keys(v.votes).length}/${s.players.length}명 투표</div>`;
     } else if ((s.st === 'over' || s.st === 'clear') && s.res) {

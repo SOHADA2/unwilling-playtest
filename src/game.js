@@ -64,6 +64,8 @@
     { title: '3단계 · 같이 맞추기', ids: ['diag', 'long'] },
   ];
   const TUT_ORDER = TUT_STAGES.flatMap(g => g.ids);
+  // 피해 원인 → 다시 띄울 팁 (main.js HINT 키)
+  const REHINT = { pit: 'pit', edge: 'bridge', bar: 'bar', beam: 'beam', ant: 'ant', shot: 'shot', log: 'log', barrel: 'barrel', rock: 'rock', wave: 'wave', blade: 'blade', collapse: 'collapse' };
   const PINGS = ['지금!', '멈춰!', '니 탓!', '나이스!'];
   const PROLOGUE_LEN = 26; // prologue.js 의 LEN 과 같게
   const INTRO_T = 15, SHUF_T = 10; // 역할 배정 화면 최대 시간 (모두 '준비 완료'면 바로 시작)
@@ -111,7 +113,8 @@
     const s = lv.start;
     this.body = { x: s.x, y: s.y, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, inv: 0, slide: 0, landSlide: 0, longJ: false, crouch: false, faceX: 0, faceY: -1, diagT: 0, diagDone: false, safe: [], safeT: 0 };
     this.stats = { mhp: 100, atk: 1, spd: 1, regen: 16, defR: 10, sab: 1, run: 1, lhR: 14, lhDmg: 1, stunHit: false, rhN: 1, pierce: false, rhLife: 0.42, atkCd: 0.5, atkRange: 100, reflect: false, dbl: false, slideInv: false, slideT: 0.55 };
-    this.hp = 100; this.mana = 100; this.lv = 1; this.xp = 0; this.xpNeed = 12;
+    this.hp = 100; this.mana = 100; this.lv = 1; this.xp = 0; this.xpNeed = 12; this.xpWhy = {}; this.lvUpT = 0;
+    this.hurtCnt = {}; this.rehintT = {};
     this.cam = { mode: 'scroll' };
     // 무너지는 계단: 이 y보다 아래(뒤)의 계단 줄은 무너져 있다. 위로 쫓아온다
     this.col = { on: true, d: -2, delay: 3, hinted: false }; // d 보다 가까운(dist 작은) 계단 칸은 무너져 있다
@@ -250,13 +253,20 @@
     if (this.sab.phase === 'on') { this.blameWizard++; who = 'wizard'; }
     else { who = this.roles[role]; const ps = this.pstats[who]; if (ps) { ps.blame++; ps.causes[cause] = (ps.causes[cause] || 0) + 1; } }
     this.emit('hurt', { a, role, cause, who, x: r1(b.x), y: r1(b.y) });
+    // 같은 원인으로 2번째 맞으면 그 담당자에게 팁을 다시 (이후 3번마다, 8초에 한 번까지)
+    const hk = REHINT[cause];
+    if (hk && who !== 'wizard') {
+      const n = this.hurtCnt[cause] = (this.hurtCnt[cause] || 0) + 1;
+      if ((n === 2 || (n > 2 && (n - 2) % 3 === 0)) && this.time - (this.rehintT[cause] || -99) > 8) { this.rehintT[cause] = this.time; this.emit('hint', { k: hk, re: 1, pid: who }); }
+    }
     return true;
   };
   P.knock = function (nx, ny, pow) { const b = this.body; b.vx = nx * pow; b.vy = ny * pow; b.stun = 0.25; b.slide = 0; };
 
   // ---------- 메인 스텝 ----------
   P.step = function () {
-    const dt = DT;
+    // 레벨업 순간: 1초 동안 느려지며 "LEVEL UP!" 연출 → 그 뒤 카드 투표 (갑자기 멈추면 왜 떴는지 모름)
+    const dt = this.lvUpT > 0 && this.state === 'play' ? DT * 0.3 : DT;
     this.time += dt;
     this.stepPings();
     if (this.state === 'prologue') {
@@ -290,9 +300,13 @@
     this.stepTut(dt);
     this.mana = Math.min(100, this.mana + this.stats.regen * dt);
     if (this.hp <= 0) { this.hp = 0; this.finish('over'); }
-    else if (this.state === 'play' && this.xp >= this.xpNeed) {
+    else if (this.state === 'play' && this.lvUpT > 0) {
+      this.body.inv = Math.max(this.body.inv, 0.2); // 연출 중엔 안 다친다
+      this.lvUpT -= DT; if (this.lvUpT <= 0) { this.lvUpT = 0; this.startVote(); }
+    } else if (this.state === 'play' && this.xp >= this.xpNeed) {
       this.xp -= this.xpNeed; this.lv++; this.xpNeed = Math.round(this.xpNeed * 1.35 + 4);
-      this.startVote();
+      this.lvUpT = 1.0;
+      this.emit('levelup', { lv: this.lv, x: r1(this.body.x), y: r1(this.body.y) });
     }
     this.pruneEvents();
   };
@@ -718,7 +732,7 @@
           if (!o.alive || o.k !== 'bar') continue;
           const cx = clamp(hx, o.x0, o.x1), cy = clamp(hy, o.y0, o.y1);
           if (Math.hypot(cx - hx, cy - hy) < R) {
-            o.alive = false; this.xp += 1;
+            o.alive = false; this.gainXp(1, 'break', cx, cy);
             const pid = this.roles.lh; if (this.pstats[pid]) this.pstats[pid].breaks++;
             this.emit('break', { id: o.id, x: r1(cx), y: r1(cy) });
             this.solve('bar', ['lh']);
@@ -729,7 +743,7 @@
             ? Math.hypot(clamp(hx, o.x0, o.x1) - hx, clamp(hy, o.y - 5, o.y + 5) - hy) < R
             : Math.hypot(o.x - hx, o.y - hy) < R + 6;
           if (hit && !o.dead) {
-            o.dead = true; this.xp += 1;
+            o.dead = true; this.gainXp(1, 'break', o.x, o.y);
             const pid = this.roles.lh; if (this.pstats[pid]) this.pstats[pid].breaks++;
             this.emit('break', { x: r1(o.x), y: r1(o.y) });
             this.solve(o.k === 'log' ? 'log' : 'crate', ['lh']);
@@ -783,6 +797,11 @@
     }
   };
 
+  // 경험치: 어디서 얼마 얻었는지 보이게(+XP 글자) · 레벨업 카드 창에 "왜 떴는지" 적으려고 이번 레벨 동안의 출처를 센다
+  P.gainXp = function (n, why, x, y) {
+    this.xp += n; this.xpWhy[why] = (this.xpWhy[why] || 0) + 1;
+    this.emit('xp', { n, x: r1(x), y: r1(y) });
+  };
   const DUMMY_TASK = { crate: 'lh', ant: 'rh', fly: 'atk', rune: 'def' };
   P.damage = function (e, dmg, role) {
     if (e.dead) return;
@@ -792,7 +811,7 @@
     if (e.hp <= 0) {
       e.dead = true;
       const xp = e.tr ? 1 : ({ ant: 3, spit: 4, fly: 4, egg: 1, queen: 0 }[e.k] || 0);
-      this.xp += xp;
+      if (xp) this.gainXp(xp, e.k === 'egg' || e.k === 'crate' ? 'break' : 'kill', e.x, e.y - e.z);
       const pid = this.roles[role];
       if (this.pstats[pid]) { if (e.k === 'egg' || e.k === 'crate') this.pstats[pid].breaks++; else this.pstats[pid].kills++; }
       if (e.tr) this.tutDone(e.k === 'crate' ? 'lh' : e.k === 'ant' ? 'rh' : 'atk');
@@ -1019,7 +1038,8 @@
       while (r > w[i] && i < w.length - 1) { r -= w[i]; i++; }
       cards.push(pool[i].id); pool.splice(i, 1);
     }
-    this.vote = { id: ++this.voteSeq, cards, t: 12, votes: {} };
+    this.vote = { id: ++this.voteSeq, cards, t: 12, votes: {}, why: this.xpWhy || {} };
+    this.xpWhy = {};
     this.state = 'vote';
     this.emit('vote', {});
   };
@@ -1112,7 +1132,8 @@
       players: this.players,
       act,
       ev: this.events,
-      vote: this.vote ? { id: this.vote.id, cards: this.vote.cards, t: r1(this.vote.t), votes: this.vote.votes } : null,
+      vote: this.vote ? { id: this.vote.id, cards: this.vote.cards, t: r1(this.vote.t), votes: this.vote.votes, why: this.vote.why } : null,
+      lu: this.lvUpT > 0 ? r1(this.lvUpT) : 0,
       boss: (() => { const q = this.enemies.find(e => e.k === 'queen'); return q ? [Math.max(0, Math.ceil(q.hp)), q.max] : null; })(),
       res: this.result,
       ready: Object.keys(this.ready || {}), stTot: this.state === 'shuffle' ? SHUF_T : INTRO_T,

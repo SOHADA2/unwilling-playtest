@@ -204,6 +204,11 @@
       case 'hatch': add(ev.x, ev.y, 8, '#efe3c8', 35, 0.4, true, 4); break;
       case 'enrage': this.shake = 5; break;
       case 'fall': add(ev.x, ev.y, 8, '#cdb8ff', 25, 0.5, false, 4); break;
+      case 'xp': this.pops.push({ text: '+' + ev.n + ' XP', x: ev.x + 8, y: ev.y + 6, col: '#8fd0ff', t: 0.8 }); break;
+      case 'levelup':
+        for (let i = 0; i < 3; i++) this.rings.push({ x: ev.x, y: ev.y, t: 0.5 + i * 0.25, life: 0.5 + i * 0.25, col: '255,220,110', r: 40 + i * 20 });
+        add(ev.x, ev.y, 28, '#ffe27a', 70, 1.0, true, 10); this.edge = { col: '#ffe27a', t: 0.6 };
+        break;
       case 'rock': add(ev.x, ev.y, 10, '#9a93b2', 45, 0.6, true, 4); this.shake = Math.max(this.shake, 2.5); this.rings.push({ x: ev.x, y: ev.y, t: 0.3, life: 0.3, col: '200,190,230', r: 18 }); break;
       case 'rollfall': add(ev.x, ev.y, 6, '#8a5a2b', 30, 0.5, true, 4); break;
       case 'collapse': this.shake = 3; break;
@@ -429,6 +434,7 @@
     if (this.edge && (this.edge.t -= dt) > 0) { x.globalAlpha = this.edge.t / 0.35 * 0.8; x.fillStyle = this.edge.col; x.fillRect(0, 0, VW, 3); x.fillRect(0, VH - 3, VW, 3); x.fillRect(0, 0, 3, VH); x.fillRect(VW - 3, 0, 3, VH); x.globalAlpha = 1; }
     if (sab === 'on') { x.fillStyle = 'rgba(120,40,200,0.18)'; x.fillRect(0, 0, VW, VH); }
     if (sab === 'warn' && Math.floor(now * 8) % 2) { x.fillStyle = 'rgba(160,80,255,0.12)'; x.fillRect(0, 0, VW, VH); }
+    if (s.lu > 0) { x.fillStyle = 'rgba(255,215,90,' + (0.1 + 0.06 * Math.sin(now * 20)).toFixed(3) + ')'; x.fillRect(0, 0, VW, VH); } // 레벨업 순간 (느려짐)
     if (this.flash > 0) { this.flash -= dt; x.fillStyle = 'rgba(255,40,40,' + (this.flash * 0.8).toFixed(2) + ')'; x.fillRect(0, 0, VW, VH); }
     if (s.hp < s.mhp * 0.3 && s.st === 'play') { const a = 0.15 + Math.sin(now * 5) * 0.08; x.fillStyle = 'rgba(180,0,0,' + a.toFixed(2) + ')'; x.fillRect(0, 0, VW, 3); x.fillRect(0, VH - 3, VW, 3); x.fillRect(0, 0, 3, VH); x.fillRect(VW - 3, 0, 3, VH); }
   };
