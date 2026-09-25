@@ -186,7 +186,7 @@
     const cv = this.cine; if (!cv) return;
     const x = cv.getContext('2d'), t = LEN - s.stT, sc = sceneAt(t), u = Math.max(0, t - sc.t0), d = sc.t1 - sc.t0;
     const pls = s.players && s.players.length ? s.players : [{ name: '?', col: 0 }];
-    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=mugzh5tt'; }
+    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=muh3iflr'; }
     const C = this.cineCache || (this.cineCache = {});
     if (!C.grain) { C.grain = grainTex(); C.dunFar = dungeonBG(1.6); C.floor = floorCloseBG(); C.room = roomBG(); }
     x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none';
