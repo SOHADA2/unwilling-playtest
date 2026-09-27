@@ -186,7 +186,7 @@
     const cv = this.cine; if (!cv) return;
     const x = cv.getContext('2d'), t = LEN - s.stT, sc = sceneAt(t), u = Math.max(0, t - sc.t0), d = sc.t1 - sc.t0;
     const pls = s.players && s.players.length ? s.players : [{ name: '?', col: 0 }];
-    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=muh3iflr'; }
+    if (!this.logoImg && typeof Image !== 'undefined') { this.logoImg = new Image(); this.logoImg.src = 'assets/logo.png?v=mujnkxgx'; }
     const C = this.cineCache || (this.cineCache = {});
     if (!C.grain) { C.grain = grainTex(); C.dunFar = dungeonBG(1.6); C.floor = floorCloseBG(); C.room = roomBG(); }
     x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none';
@@ -284,7 +284,7 @@
       glow(x, 392, 154, 180, 'rgba(210,140,255,' + (0.35 * fl).toFixed(2) + ')'); glow(x, 392, 154, 40, 'rgba(255,255,255,0.6)');
       x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = 'rgba(255,220,255,' + (0.25 * fl).toFixed(2) + ')'; x.fillRect(392 - 260 * fl, 152, 520 * fl, 3); x.restore();
       for (const [dx2, rr, a] of [[120, 14, 0.18], [230, 26, 0.12], [330, 9, 0.2]]) glow(x, 392 + dx2, 154 + dx2 * 0.4, rr, 'rgba(180,140,255,' + a + ')');
-      bubble(x, 300, 110, '오너라… 전설의 용사여!', u * 14);
+      bubble(x, 300, 110, '오너라… 나의 부름에 응하라!', u * 14);
       // 바람선
       x.strokeStyle = 'rgba(220,200,255,0.25)'; x.lineWidth = 2; for (let i = 0; i < 8; i++) { const yy = 200 + i * 40, off = (now * 400 + i * 97) % 1200 - 200; x.beginPath(); x.moveTo(off, yy); x.lineTo(off + 120, yy - 8); x.stroke(); }
     });
